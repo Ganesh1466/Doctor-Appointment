@@ -60,6 +60,26 @@ const Appointment = () => {
 
       const slotDate = day + "_" + month + "_" + year;
 
+      // Ensure no double booking by checking if the exact slot is already taken
+      const { data: existingBooking, error: checkError } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('doc_id', docId)
+        .eq('slot_date', slotDate)
+        .eq('slot_time', slotTime);
+
+      if (checkError) {
+        console.error("Double booking check error:", checkError);
+        toast.error("Failed to verify slot availability");
+        return;
+      }
+
+      if (existingBooking && existingBooking.length > 0) {
+        toast.error("This slot has just been booked by someone else. Please select another slot.");
+        getAvailableSlots(); // Refresh UI
+        return;
+      }
+
       // Use name from profile
       let patientName = userProfile.name || 'Unknown';
 
@@ -97,11 +117,32 @@ const Appointment = () => {
     const docInfo = doctors.find(doc => doc.id === docId);
     setDocInfo(docInfo);
   };
-  const getAvailableSlots = () => {
+  const getAvailableSlots = async () => {
     setDocSlots([]); // clear first
 
     let today = new Date();
     let allSlots = [];     // ← ADDED (to collect slots for each day)
+
+    // Fetch existing appointments for exactly this doctor to filter them out instantly
+    let bookedSlotsMap = {};
+    try {
+      const { data: appointments, error } = await supabase
+        .from('appointments')
+        .select('slot_date, slot_time')
+        .eq('doc_id', docId)
+        .neq('status', 'Cancelled'); // Optionally ignore cancelled ones
+
+      if (!error && appointments) {
+        appointments.forEach(app => {
+          if (!bookedSlotsMap[app.slot_date]) {
+            bookedSlotsMap[app.slot_date] = new Set();
+          }
+          bookedSlotsMap[app.slot_date].add(app.slot_time);
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch existing doctor appointments for filtering", err);
+    }
 
     for (let i = 0; i < 7; i++) {
 
@@ -128,7 +169,19 @@ const Appointment = () => {
           minute: '2-digit'
         });
 
-        timeslots.push(formatedTime);
+        // Determine this slot's formal date string to check against mapped bookings
+        let checkDay = currentdate.getDate();
+        let checkMonth = currentdate.getMonth() + 1;
+        let checkYear = currentdate.getFullYear();
+        let checkSlotDate = checkDay + "_" + checkMonth + "_" + checkYear;
+
+        // Only add to available timeslots if not booked
+        let isBooked = bookedSlotsMap[checkSlotDate]?.has(formatedTime);
+
+        if (!isBooked) {
+          timeslots.push(formatedTime);
+        }
+
         currentdate.setMinutes(currentdate.getMinutes() + 30);
       }
 

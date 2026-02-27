@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { supabase } from '../supabase';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 const DoctorLogin = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
 
     const handleDoctorLogin = async () => {
@@ -57,13 +59,22 @@ const DoctorLogin = () => {
                     className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 focus:bg-white focus:border-blue-600 outline-none mb-3 text-sm"
                 />
 
-                <input
-                    type="password"
-                    placeholder="Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 focus:bg-white focus:border-blue-600 outline-none mb-4 text-sm"
-                />
+                <div className="relative w-full mb-4">
+                    <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 focus:bg-white focus:border-blue-600 outline-none text-sm pr-12"
+                    />
+                    <button
+                        onClick={() => setShowPassword(!showPassword)}
+                        type="button"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600"
+                    >
+                        {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                    </button>
+                </div>
 
                 <button
                     onClick={handleDoctorLogin}

@@ -61,14 +61,18 @@ const Navbar = () => {
         {user ? (
           <>
             {/* Profile Dropdown */}
-            <div className="flex items-center gap-2 group cursor-pointer relative">
+            <div className="flex items-center gap-2 group cursor-pointer relative py-2">
               <img className="w-10 h-10 rounded-full object-cover" src={userData?.image || assets.profile_pic} alt="profile" />
-              <img className="w-3 h-3 hidden md:block" src={assets.dropdown_icon} alt="dropdown" />
+              <img className="w-3 h-3 hidden md:block group-hover:rotate-180 transition-transform duration-300" src={assets.dropdown_icon} alt="dropdown" />
 
-              <div className="absolute right-0 top-0 text-base font-semibold text-black bg-white shadow-lg rounded-md mt-12 py-2 px-4 w-40 z-20 hidden group-hover:block">
-                <p onClick={() => navigate("/my-profile")} className="hover:text-blue-500 cursor-pointer py-1">My Profile</p>
-                <p onClick={() => navigate("/my-appointments")} className="hover:text-blue-500 cursor-pointer py-1">My Appointment</p>
-                <p onClick={handleLogout} className="hover:text-blue-500 cursor-pointer py-1" >Logout</p>
+              {/* Invisible padded bridge to prevent lost hover */}
+              <div className="absolute top-12 right-0 pt-2 z-20 hidden group-hover:block transition-all duration-300 opacity-0 group-hover:opacity-100 min-w-[max-content]">
+                <div className="text-base font-semibold text-gray-700 bg-white shadow-xl border border-gray-100 rounded-lg py-2 px-4 w-40 flex flex-col gap-1 z-20">
+                  <p onClick={() => navigate("/my-profile")} className="hover:text-blue-600 hover:bg-blue-50 cursor-pointer py-1 px-2 rounded transition-colors duration-200">My Profile</p>
+                  <p onClick={() => navigate("/my-appointments")} className="hover:text-blue-600 hover:bg-blue-50 cursor-pointer py-1 px-2 rounded transition-colors duration-200">My Appointments</p>
+                  <hr className="border-gray-100 my-1" />
+                  <p onClick={handleLogout} className="hover:text-red-600 hover:bg-red-50 text-red-500 cursor-pointer py-1 px-2 rounded transition-colors duration-200" >Logout</p>
+                </div>
               </div>
             </div>
 
