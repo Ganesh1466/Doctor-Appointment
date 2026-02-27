@@ -19,7 +19,7 @@ const Navbar = () => {
             .from('users')
             .select('image')
             .eq('id', user.id)
-            .single();
+            .maybeSingle();
 
           if (data) {
             setUserData(data);
@@ -60,12 +60,12 @@ const Navbar = () => {
       <div className="flex items-center gap-4">
         {user ? (
           <>
-            {/* Desktop Dropdown */}
-            <div className="hidden md:flex items-center gap-2 group cursor-pointer relative">
+            {/* Profile Dropdown */}
+            <div className="flex items-center gap-2 group cursor-pointer relative">
               <img className="w-10 h-10 rounded-full object-cover" src={userData?.image || assets.profile_pic} alt="profile" />
-              <img className="w-3 h-3" src={assets.dropdown_icon} alt="dropdown" />
+              <img className="w-3 h-3 hidden md:block" src={assets.dropdown_icon} alt="dropdown" />
 
-              <div className="absolute right-0 top-0 text-base font-semibold text-black bg-white shadow-lg rounded-md mt-10 py-2 px-4 w-40 z-20 hidden group-hover:block">
+              <div className="absolute right-0 top-0 text-base font-semibold text-black bg-white shadow-lg rounded-md mt-12 py-2 px-4 w-40 z-20 hidden group-hover:block">
                 <p onClick={() => navigate("/my-profile")} className="hover:text-blue-500 cursor-pointer py-1">My Profile</p>
                 <p onClick={() => navigate("/my-appointments")} className="hover:text-blue-500 cursor-pointer py-1">My Appointment</p>
                 <p onClick={handleLogout} className="hover:text-blue-500 cursor-pointer py-1" >Logout</p>
@@ -96,11 +96,13 @@ const Navbar = () => {
                 <p onClick={() => { setOpenMenu(false); navigate("/"); }} className="hover:text-blue-400 hover:font-bold cursor-pointer py-2">Home</p>
                 <p onClick={() => { setOpenMenu(false); navigate("/doctors"); }} className="hover:text-blue-500 hover:font-bold cursor-pointer py-2">All Doctor</p>
                 <p onClick={() => { setOpenMenu(false); navigate("/contact"); }} className="hover:text-blue-500 hover:font-bold  cursor-pointer py-2">Contact</p>
-                <p onClick={() => { setOpenMenu(false); navigate("/about"); }} className="hover:text-blue-500 hover:font-bold cursor-pointer ">About</p>
+                <p onClick={() => { setOpenMenu(false); navigate("/about"); }} className="hover:text-blue-500 hover:font-bold cursor-pointer py-2">About</p>
 
-
-
-              </div>
+                {/* Profile Links for Mobile */}
+                <hr className="w-1/2 border-gray-300 my-2" />
+                <p onClick={() => { setOpenMenu(false); navigate("/my-profile"); }} className="hover:text-blue-500 hover:font-bold cursor-pointer py-2">My Profile</p>
+                <p onClick={() => { setOpenMenu(false); navigate("/my-appointments"); }} className="hover:text-blue-500 hover:font-bold cursor-pointer py-2">My Appointments</p>
+                <p onClick={() => { setOpenMenu(false); handleLogout(); }} className="hover:text-blue-500 hover:font-bold cursor-pointer py-2">Logout</p>              </div>
             )}
           </>
         ) : (

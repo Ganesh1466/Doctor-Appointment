@@ -15,15 +15,32 @@ connectCloudinary();
 
 // Rate Limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.'
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
 });
 
 app.use(limiter); // Apply rate limiting
 
 // Middleware
-app.use(cors());
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL_LOCAL || "http://localhost:5173"
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // Postman / server-to-server
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS: " + origin));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
+
+app.options(/(.*)/, cors());
+
 app.use(express.json());
 
 import userRoutes from './routes/userRoutes.js';
@@ -37,7 +54,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/appointments", appointmentRouter);
 
 app.get('/', (req, res) => {
-    res.send('Doctor Appointment Backend is running');
+  res.send('Doctor Appointment Backend is running');
 });
 
 export default app;

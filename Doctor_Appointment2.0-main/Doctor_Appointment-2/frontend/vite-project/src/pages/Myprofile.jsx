@@ -39,20 +39,23 @@ const Myprofile = () => {
         .from('users')
         .select('*')
         .eq('id', user.id)
+        .maybeSingle();
+
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        const profile = data[0];
-        setUserData({
-          name: profile.name || "",
-          email: profile.email || user.email,
-          phone: profile.phone || "",
-          address: profile.address || { line1: "", line2: "" },
-          gender: profile.gender || "Not Selected",
-          dob: profile.dob || "",
-          image: profile.image || ""
-        });
-      }
+      // Extract raw auth metadata name if DB name is missing
+      const fallbackName = user?.user_metadata?.name || user?.user_metadata?.full_name || "";
+
+      setUserData({
+        name: data?.name || fallbackName,
+        email: data?.email || user.email,
+        phone: data?.phone || "",
+        address: data?.address || { line1: "", line2: "" },
+        gender: data?.gender || "Not Selected",
+        dob: data?.dob || "",
+        image: data?.image || ""
+      });
+
     } catch (error) {
       console.error("Error fetching/creating profile:", error);
       toast.error("Could not load profile data");
@@ -88,11 +91,10 @@ const Myprofile = () => {
       // Update local state
       setUserData(prev => ({ ...prev, image: publicUrl }));
 
-      // Update DB (Supabase Users Table)
+      // Update DB (Supabase Users Table) - Use upsert if record missing
       const { error: dbError } = await supabase
         .from('users')
-        .update({ image: publicUrl })
-        .eq('id', user.id);
+        .upsert({ id: user.id, email: user.email, image: publicUrl });
 
       if (dbError) throw dbError;
 
@@ -110,15 +112,16 @@ const Myprofile = () => {
     try {
       const { error } = await supabase
         .from('users')
-        .update({
+        .upsert({
+          id: user.id,
+          email: userData.email, // Required or upsert might fail if table has email constraint
           name: userData.name,
           phone: userData.phone,
           address: userData.address, // Ensure valid JSON in DB
           gender: userData.gender,
           dob: userData.dob,
           image: userData.image // Also save image url if it was just set in state but not db? (Redundant but safe)
-        })
-        .eq('id', user.id);
+        });
 
       if (error) throw error;
 

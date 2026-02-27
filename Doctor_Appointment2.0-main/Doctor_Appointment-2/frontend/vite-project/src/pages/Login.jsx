@@ -30,15 +30,17 @@ const Login = () => {
     e.preventDefault();
 
     console.log("Google Login Clicked");
-    const redirectUrl = `${window.location.origin}/`;
-    console.log("Redirect URL:", redirectUrl);
 
     try {
+      let redirectUrl = window.location.origin;
+      // Use main production URL for Vercel deployments to ensure Google OAuth callback matches
+      if (redirectUrl.includes("vercel.app")) {
+        redirectUrl = "https://doctor-appointment-nine-phi.vercel.app";
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: redirectUrl
-        }
+        provider: "google",
+        options: { redirectTo: redirectUrl }
       });
       if (error) throw error;
     } catch (error) {
