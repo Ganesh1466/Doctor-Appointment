@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react'
 import { assets } from '../assets/assets'
 import Navbar from '../components/Navbar'
@@ -24,8 +25,8 @@ const Myprofile = () => {
   const [isEdit, setIsEdit] = useState(false)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [dobError, setDobError] = useState("");
 
-  // Fetch user profile on mount
   useEffect(() => {
     if (user) {
       fetchProfile();
@@ -43,7 +44,6 @@ const Myprofile = () => {
 
       if (error) throw error;
 
-      // Extract raw auth metadata name if DB name is missing
       const fallbackName = user?.user_metadata?.name || user?.user_metadata?.full_name || "";
 
       setUserData({
@@ -57,7 +57,7 @@ const Myprofile = () => {
       });
 
     } catch (error) {
-      console.error("Error fetching/creating profile:", error);
+      console.error("Error fetching profile:", error);
       toast.error("Could not load profile data");
     } finally {
       setLoading(false);
@@ -70,11 +70,9 @@ const Myprofile = () => {
       const file = event.target.files[0];
       if (!file) return;
 
-      // Create FormData
       const formData = new FormData();
       formData.append('image', file);
 
-      // Upload to Backend (Cloudinary)
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/user/upload-image`, {
         method: 'POST',
         body: formData
@@ -88,47 +86,63 @@ const Myprofile = () => {
 
       const publicUrl = data.imageURL;
 
-      // Update local state
       setUserData(prev => ({ ...prev, image: publicUrl }));
 
-      // Update DB (Supabase Users Table) - Use upsert if record missing
       const { error: dbError } = await supabase
         .from('users')
         .upsert({ id: user.id, email: user.email, image: publicUrl });
 
       if (dbError) throw dbError;
 
-      toast.success("Profile image updated via Backend!");
+      toast.success("Profile image updated!");
 
     } catch (error) {
-      console.error("Error uploading image:", error);
-      toast.error(`Image upload failed: ${error.message}`);
+      console.error("Image upload error:", error);
+      toast.error(`Image upload failed`);
     } finally {
       setUploading(false);
     }
   }
 
   const handleSave = async () => {
+
+    if (userData.phone && userData.phone.length !== 10) {
+      toast.error("Phone number must be exactly 10 digits");
+      return;
+    }
+
+    if (userData.dob) {
+      const selectedDate = new Date(userData.dob);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0)
+
+      if (selectedDate > today) {
+        toast.error("Birthday cannot be in the future");
+        return;
+      }
+    }
+
     try {
       const { error } = await supabase
         .from('users')
         .upsert({
           id: user.id,
-          email: userData.email, // Required or upsert might fail if table has email constraint
+          email: userData.email,
           name: userData.name,
           phone: userData.phone,
-          address: userData.address, // Ensure valid JSON in DB
+          address: userData.address,
           gender: userData.gender,
           dob: userData.dob,
-          image: userData.image // Also save image url if it was just set in state but not db? (Redundant but safe)
+          image: userData.image
         });
 
       if (error) throw error;
 
       toast.success("Profile updated successfully");
       setIsEdit(false);
+
     } catch (error) {
-      console.error("Error updating profile:", error);
+      console.error("Update error:", error);
       toast.error("Failed to update profile");
     }
   };
@@ -139,20 +153,22 @@ const Myprofile = () => {
     <>
       <Navbar />
 
-      <div className="ml-60 p-4 max-w-xl text-left">
+      <div className="md:ml-60 p-4 max-w-xl w-full text-left">
 
         {/* Profile Image */}
-        <div className="mb-4 relative w-32 h-32">
+        <div className="mb-4 relative w-24 h-24 sm:w-32 sm:h-32">
           <img
             src={userData.image || assets.profile_pic}
             alt="profile"
             className="w-full h-full rounded-md object-cover"
           />
+
           {isEdit && (
             <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-md cursor-pointer group">
-              <p className="text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+              <p className="text-white text-xs font-semibold opacity-0 group-hover:opacity-100">
                 {uploading ? "Uploading..." : "Change Photo"}
               </p>
+
               <input
                 type="file"
                 accept="image/*"
@@ -164,98 +180,73 @@ const Myprofile = () => {
           )}
         </div>
 
-
         {/* Name */}
         {isEdit ? (
           <input
             type="text"
             value={userData.name}
             onChange={e => setUserData(prev => ({ ...prev, name: e.target.value }))}
-            className="border p-1 rounded w-60 mb-3 text-sm"
+            className="border p-2 rounded w-full sm:w-80 mb-3 text-sm"
           />
         ) : (
-          <p className="text-3xl font-semibold mb-3">{userData.name}</p>
+          <p className="text-2xl sm:text-3xl font-semibold mb-3">{userData.name}</p>
         )}
 
-        <hr className="my-4" />
+        <hr className="my-4 border-gray-200" />
 
         {/* CONTACT INFORMATION */}
-        <p className="text-lg font-semibold mb-3">CONTACT INFORMATION</p>
+        <p className="text-base sm:text-lg font-semibold mb-3 text-gray-700">CONTACT INFORMATION</p>
 
-        {/* Email */}
-        <div className="flex items-center mb-2">
-          <p className="w-32 font-medium">Email id:</p>
-
-          <p className="text-blue-600">{userData.email}</p>
+        <div className="flex flex-col sm:flex-row sm:items-center mb-4 sm:mb-2">
+          <p className="w-32 font-medium text-gray-600 mb-1 sm:mb-0">Email id:</p>
+          <p className="text-blue-600 break-all">{userData.email}</p>
         </div>
 
-        {/* Phone */}
-        <div className="flex items-center mb-2">
-          <p className="w-32 font-medium">Phone:</p>
+        {/* PHONE */}
+        <div className="flex flex-col sm:flex-row sm:items-center mb-4 sm:mb-2">
+          <p className="w-32 font-medium text-gray-600 mb-1 sm:mb-0">Phone:</p>
 
           {isEdit ? (
             <input
-              type="text"
-              value={userData.phone}
-              onChange={e => setUserData(prev => ({ ...prev, phone: e.target.value }))}
-              className="border p-1 rounded w-60 text-sm"
+              type="tel"
+              value={userData.phone || ""}
+              onChange={(e) => {
+
+                let value = e.target.value.replace(/\D/g, "")
+
+                if (value.length > 10) {
+                  value = value.slice(0, 10)
+                }
+
+                setUserData(prev => ({
+                  ...prev,
+                  phone: value
+                }))
+
+              }}
+              maxLength="10"
+              inputMode="numeric"
+              className="border p-2 rounded w-full sm:w-80 text-sm"
+              placeholder="Enter 10 digit phone"
             />
           ) : (
             <p>{userData.phone}</p>
           )}
         </div>
 
-        {/* Address */}
-        <div className="flex items-start mb-2">
-          <p className="w-32 font-medium">Address:</p>
-
-          {isEdit ? (
-            <div>
-              <input
-                type="text"
-                value={userData.address?.line1 || ''}
-                onChange={e =>
-                  setUserData(prev => ({
-                    ...prev,
-                    address: { ...prev.address, line1: e.target.value }
-                  }))
-                }
-                className="border p-1 rounded w-60 mb-1 text-sm"
-              />
-              <input
-                type="text"
-                value={userData.address?.line2 || ''}
-                onChange={e =>
-                  setUserData(prev => ({
-                    ...prev,
-                    address: { ...prev.address, line2: e.target.value }
-                  }))
-                }
-                className="border p-1 rounded w-60 text-sm"
-              />
-            </div>
-          ) : (
-            <div>
-              <p>{userData.address?.line1}</p>
-              <p>{userData.address?.line2}</p>
-            </div>
-          )}
-        </div>
-
-        <hr className="my-4" />
-
         {/* BASIC INFORMATION */}
-        <p className="text-lg font-semibold mb-3">BASIC INFORMATION</p>
+        <hr className="my-4 border-gray-200" />
+        <p className="text-base sm:text-lg font-semibold mb-3 text-gray-700">BASIC INFORMATION</p>
 
         {/* Gender */}
-        <div className="flex items-center mb-3">
-          <p className="w-32 font-medium">Gender:</p>
+        <div className="flex flex-col sm:flex-row sm:items-center mb-4 sm:mb-3">
+          <p className="w-32 font-medium text-gray-600 mb-1 sm:mb-0">Gender:</p>
 
           {isEdit ? (
             <select
               value={userData.gender}
               onChange={(e) => setUserData(prev => ({ ...prev, gender: e.target.value }))}
-              className="border p-1 rounded w-60 text-sm"
+              className="border p-2 rounded w-full sm:w-80 text-sm bg-white"
             >
               <option>Male</option>
               <option>Female</option>
@@ -267,25 +258,55 @@ const Myprofile = () => {
         </div>
 
         {/* DOB */}
-        <div className="flex items-center mb-4">
-          <p className="w-32 font-medium">Birthday:</p>
+        <div className="flex flex-col sm:flex-row sm:items-center mb-6">
+          <p className="w-32 font-medium text-gray-600 mb-1 sm:mb-0">Birthday:</p>
 
           {isEdit ? (
-            <input
-              type="date"
-              value={userData.dob}
-              onChange={e => setUserData(prev => ({ ...prev, dob: e.target.value }))}
-              className="border p-1 rounded w-60 text-sm"
-            />
+            <div className="w-full sm:w-80">
+              <input
+                type="date"
+                value={userData.dob || ""}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const selectedDate = new Date(value);
+                  const today = new Date();
+
+                  today.setHours(0, 0, 0, 0);
+
+                  if (selectedDate > today) {
+                    setDobError("Future date is not allowed");
+
+                    // reset date
+                    setUserData((prev) => ({
+                      ...prev,
+                      dob: ""
+                    }));
+
+                    return;
+                  }
+
+                  setDobError("");
+
+                  setUserData((prev) => ({
+                    ...prev,
+                    dob: value
+                  }));
+                }}
+                max={new Date().toISOString().split("T")[0]}
+                className="border p-2 rounded w-full text-sm"
+              />
+
+              {dobError && (
+                <p className="text-red-500 text-xs mt-1">{dobError}</p>
+              )}
+            </div>
           ) : (
             <p>{userData.dob}</p>
           )}
         </div>
-
-        {/* Button */}
         <button
           onClick={() => isEdit ? handleSave() : setIsEdit(true)}
-          className="mt-3 bg-blue-600 text-white px-8 py-2 rounded-full hover:bg-blue-700 transition"
+          className="mt-4 w-full sm:w-auto bg-blue-600 text-white px-8 py-2.5 rounded-full hover:bg-blue-700 transition shadow-sm"
         >
           {isEdit ? "Save Information" : "Edit Information"}
         </button>
@@ -295,4 +316,5 @@ const Myprofile = () => {
   )
 }
 
-export default Myprofile
+export default Myprofile;
+

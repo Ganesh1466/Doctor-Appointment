@@ -1,0 +1,5 @@
+ReferenceError: deleteDoctor is not defined
+    at file:///C:/Users/ganes/OneDrive/Documents/Mernproject/Doctor_Appointment2.0-main/Doctor_Appointment2.0-main/Doctor_Appointment-2/backend/routes/adminRoutes.js:11:47
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:647:26)
+    at async importModuleDynamicallyWrapper (node:internal/vm/module:436:15)

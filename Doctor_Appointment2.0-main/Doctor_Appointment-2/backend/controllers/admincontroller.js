@@ -1,9 +1,9 @@
-
 import validator from "validator";
 import bcrypt from "bcrypt";
 import { v2 as cloudinary } from "cloudinary";
 import doctorModel from "../models/Doctor.js";
 import jwt from "jsonwebtoken";
+import supabase from "../config/supabase.js";
 
 // API for adding doctor
 const addDoctor = async (req, res) => {
@@ -64,6 +64,24 @@ const loginAdmin = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // 1. Check if it's a valid admin in Supabase
+        const { data, error } = await supabase
+            .from('admins')
+            .select('*')
+            .eq('email', email)
+            .eq('password', password);
+
+        if (error) {
+            return res.json({ success: false, message: error.message });
+        }
+
+        if (data && data.length > 0) {
+            // Sign the standard expected payload so authAdmin passes
+            const token = jwt.sign(process.env.ADMIN_EMAIL + process.env.ADMIN_PASSWORD, process.env.JWT_SECRET);
+            return res.json({ success: true, token });
+        }
+
+        // 2. Fallback to local .env configuration
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
             const token = jwt.sign(email + password, process.env.JWT_SECRET);
             res.json({ success: true, token });
@@ -87,5 +105,39 @@ const allDoctors = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
+// API to delete doctor permanently from Supabase
+const deleteDoctor = async (req, res) => {
+    try {
+        const { id } = req.body;
 
-export { addDoctor, loginAdmin, allDoctors };
+        if (!id) {
+            return res.json({ success: false, message: "Doctor ID is required." });
+        }
+
+        // Delete from Supabase (bypasses RLS since backend uses service_role key)
+        const { error: supaError } = await supabase
+            .from('doctors')
+            .delete()
+            .eq('id', id);
+
+        if (supaError) {
+            console.error("Supabase delete doctor error:", supaError);
+            return res.json({ success: false, message: supaError.message });
+        }
+
+        // Keep MongoDB deletion in sync just in case the app switches back
+        try {
+            await doctorModel.findByIdAndDelete(id);
+        } catch (mongoErr) {
+            console.log("MongoDB delete skip (expected if using purely Supabase)", mongoErr.message);
+        }
+
+        res.json({ success: true, message: "Doctor deleted permanently" });
+
+    } catch (error) {
+        console.error("Delete Doctor Error:", error);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+export { addDoctor, loginAdmin, allDoctors, deleteDoctor };

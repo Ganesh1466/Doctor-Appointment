@@ -1,107 +1,180 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../supabase';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "../supabase";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [isAdmin, setIsAdmin] = useState(false);
 
+    // Initialize auth session
     useEffect(() => {
-        // Check active session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setUser(session?.user ?? null);
-            setLoading(false);
-        });
+        const initAuth = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    console.error("Auth Session Error:", error.message);
+                    // Handle "Refresh Token Not Found" by signing out to clear state
+                    if (
+                        error.message.includes("Refresh Token Not Found") ||
+                        error.message.includes("invalid refresh token")
+                    ) {
+                        await supabase.auth.signOut();
+                    }
+                }
+
+                setUser(session?.user ?? null);
+            } catch (err) {
+                console.error("Unexpected auth error during init:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        initAuth();
 
         // Listen for changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUser(session?.user ?? null);
-            setLoading(false);
-        });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+                setUser(session?.user ?? null);
+                setLoading(false);
+            }
+        );
 
         return () => subscription.unsubscribe();
     }, []);
 
-    const [isAdmin, setIsAdmin] = useState(false);
-
+    // Check if user is admin
     useEffect(() => {
-        const checkAdminStatus = async () => {
-            if (user) {
-                try {
-                    const { data } = await supabase
-                        .from('admins')
-                        .select('email')
-                        .eq('email', user.email)
-                        .maybeSingle(); // Use maybeSingle to avoid 406 if not found
-
-                    setIsAdmin(!!data); // True if record found
-                } catch (err) {
+        const checkAdmin = async () => {
+            try {
+                if (!user) {
                     setIsAdmin(false);
+                    return;
                 }
-            } else {
+
+                const { data, error } = await supabase
+                    .from("admins")
+                    .select("email")
+                    .eq("email", user.email)
+                    .maybeSingle();
+
+                if (error) throw error;
+
+                setIsAdmin(!!data);
+            } catch (error) {
+                console.error("Admin check error:", error.message);
                 setIsAdmin(false);
             }
         };
 
-        checkAdminStatus();
+        checkAdmin();
     }, [user]);
 
-    const signUp = async (data) => {
+    // SIGNUP
+    const signUp = async ({ email, password, name }) => {
         try {
-            const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/signup`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: data.email,
-                    password: data.password,
-                    name: data.options?.data?.name // Extract name from data.options
-                }),
-            });
-            const result = await response.json();
-
-            if (!response.ok) {
-                return { data: null, error: { message: result.message || 'Signup failed' } };
+            if (!email || !password || !name) {
+                return {
+                    data: null,
+                    error: { message: "All fields are required" }
+                };
             }
 
-            // Backend success
-            return { data: { user: result.user }, error: null };
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+            const response = await fetch(
+                `${backendUrl}/api/auth/signup`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password, name })
+                }
+            );
+
+            const result = await response.json().catch(() => ({ message: 'Invalid response from server' }));
+
+            if (!response.ok || result.success === false) {
+                return {
+                    data: null,
+                    error: { message: result.error || result.message || "Signup failed" }
+                };
+            }
+
+            if (!result.user) {
+                return { data: null, error: { message: 'Signup succeeded but no user data returned' } };
+            }
+
+            return { data: result, error: null };
         } catch (error) {
-            return { data: null, error };
+            console.error("Signup Error:", error);
+            return {
+                data: null,
+                error: { message: "Unable to connect to server" }
+            };
+        }
+    };
+
+    // LOGIN
+    const signIn = async ({ email, password }) => {
+        try {
+            if (!email || !password) {
+                return {
+                    data: null,
+                    error: { message: "Email and password required" }
+                };
+            }
+
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+            const response = await fetch(
+                `${backendUrl}/api/auth/login`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password })
+                }
+            );
+
+            const result = await response.json().catch(() => ({ message: 'Invalid response from server' }));
+
+            if (!response.ok || result.success === false) {
+                return {
+                    data: null,
+                    error: { message: result.error || result.message || "Login failed" }
+                };
+            }
+
+            if (result.session) {
+                const { error } = await supabase.auth.setSession(result.session);
+                if (error) throw error;
+            }
+
+            return { data: result, error: null };
+        } catch (error) {
+            console.error("Login Error:", error);
+            return {
+                data: null,
+                error: { message: "Unable to connect to server" }
+            };
+        }
+    };
+
+    const signOut = async () => {
+        try {
+            await supabase.auth.signOut();
+            setUser(null);
+        } catch (error) {
+            console.error("Logout Error:", error.message);
         }
     };
 
     const value = {
-        signUp,
-        signIn: async (data) => {
-            try {
-                const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
-                });
-                const result = await response.json();
-
-                if (!response.ok) {
-                    return { data: null, error: { message: result.message || 'Login failed' } };
-                }
-
-                // Hydrate the session
-                if (result.session) {
-                    const { error } = await supabase.auth.setSession(result.session);
-                    if (error) throw error;
-                    // User is automatically updated via onAuthStateChange
-                }
-
-                return { data: { user: result.user, session: result.session }, error: null };
-            } catch (error) {
-                console.error("Login Error:", error);
-                return { data: null, error };
-            }
-        },
-        signOut: () => supabase.auth.signOut(),
         user,
         isAdmin,
+        signUp,
+        signIn,
+        signOut
     };
 
     return (
@@ -111,6 +184,4 @@ export const AuthProvider = ({ children }) => {
     );
 };
 
-export const useAuth = () => {
-    return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);

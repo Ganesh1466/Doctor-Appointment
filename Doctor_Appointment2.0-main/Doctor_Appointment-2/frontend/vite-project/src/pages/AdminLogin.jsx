@@ -26,10 +26,23 @@ const AdminLogin = () => {
             if (error) {
                 toast.error(error.message);
             } else if (data && data.length > 0) {
-                // Success
-                toast.success("Admin Login Successful");
-                sessionStorage.setItem('adminToken', JSON.stringify(data[0]));
-                navigate('/admin-dashboard');
+                // Now get the backend JWT token
+                const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+                const res = await fetch(`${backendUrl}/api/admin/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const backendData = await res.json();
+
+                if (backendData.success) {
+                    sessionStorage.setItem('atoken', backendData.token);
+                    sessionStorage.setItem('adminToken', JSON.stringify(data[0]));
+                    toast.success("Admin Login Successful");
+                    navigate('/admin-dashboard');
+                } else {
+                    toast.error(backendData.message || "Backend authentication failed");
+                }
             } else {
                 toast.error("Invalid Email or Password");
             }

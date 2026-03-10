@@ -6,21 +6,12 @@ import connectCloudinary from './config/cloudinary.js';
 import doctorRoutes from './routes/doctorRoutes.js';
 import appointmentRouter from './routes/appointmentRoutes.js';
 import authRoutes from './routes/authRoutes.js'; // Import Auth Routes
-import rateLimit from 'express-rate-limit'; // Import Rate Limit
 
 const app = express();
 
 // connectDB(); // MongoDB disabled per requirements
 connectCloudinary();
 
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-
-app.use(limiter); // Apply rate limiting
 
 // Middleware
 const allowedOrigins = [
@@ -35,7 +26,7 @@ app.use(cors({
     return callback(new Error("Not allowed by CORS: " + origin));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "atoken", "token"],
   credentials: true
 }));
 
@@ -53,8 +44,21 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/appointments", appointmentRouter);
 
+app.get('/api/test-400', (req, res) => {
+  res.status(400).json({ message: 'Test 400 Error' });
+});
+
 app.get('/', (req, res) => {
   res.send('Doctor Appointment Backend is running');
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error("Global Error Handler:", err.stack);
+  res.status(500).json({
+    message: 'Internal Server Error',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 export default app;

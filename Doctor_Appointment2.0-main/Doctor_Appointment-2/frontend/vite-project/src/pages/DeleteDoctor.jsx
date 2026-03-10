@@ -25,14 +25,26 @@ const DeleteDoctor = () => {
     const deleteDoctor = async (id, name) => {
         if (window.confirm(`Are you sure you want to PERMANENTLY delete Dr. ${name}?`)) {
             try {
-                const { error } = await supabase.from('doctors').delete().eq('id', id);
-                if (error) {
-                    console.error("Error deleting doctor:", error);
-                    toast.error("Failed to delete doctor.");
-                } else {
+                // Call backend API to delete securely (bypassing RLS with admin scope)
+                const config = {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'atoken': sessionStorage.getItem('atoken') || ''
+                    },
+                    body: JSON.stringify({ id })
+                };
+
+                const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/admin/delete-doctor`, config);
+                const data = await res.json();
+
+                if (data.success) {
                     setDoctors(prev => prev.filter(doc => doc.id !== id));
-                    toast.success(`Dr. ${name} deleted successfully`);
+                    toast.success(data.message || `Dr. ${name} deleted successfully`);
+                } else {
+                    toast.error(data.message || "Failed to delete doctor.");
                 }
+
             } catch (err) {
                 console.error(err);
                 toast.error("An error occurred");

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { assets } from '../assets/assets';
 
 import { supabase } from '../supabase';
 import AdminSidebar from '../components/AdminSidebar';
 
 const AdminDashboard = () => {
+    const navigate = useNavigate();
     const [counts, setCounts] = useState({
         doctors: 0,
         appointments: 0,
