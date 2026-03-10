@@ -76,14 +76,14 @@ const loginAdmin = async (req, res) => {
         }
 
         if (data && data.length > 0) {
-            // Sign the standard expected payload so authAdmin passes
-            const token = jwt.sign(process.env.ADMIN_EMAIL + process.env.ADMIN_PASSWORD, process.env.JWT_SECRET);
+            // Sign a standard object payload
+            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET);
             return res.json({ success: true, token });
         }
 
         // 2. Fallback to local .env configuration
         if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-            const token = jwt.sign(email + password, process.env.JWT_SECRET);
+            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET);
             res.json({ success: true, token });
         } else {
             res.json({ success: false, message: "Invalid Credentials" });

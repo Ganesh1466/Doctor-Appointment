@@ -23,7 +23,19 @@ const authAdmin = async (req, res, next) => {
 
         const decoded = jwt.verify(atoken, process.env.JWT_SECRET);
 
-        if (decoded !== process.env.ADMIN_EMAIL + process.env.ADMIN_PASSWORD) {
+        // Allow either the old string-based format (for backward compatibility)
+        // or a more standard object-based format
+        const adminIdentifier = process.env.ADMIN_EMAIL + process.env.ADMIN_PASSWORD;
+
+        if (typeof decoded === 'string') {
+            if (decoded !== adminIdentifier) {
+                return res.json({ success: false, message: "Not Authorized Login Again" });
+            }
+        } else if (decoded && decoded.role === 'admin') {
+            // New object-based format
+            next();
+            return;
+        } else {
             return res.json({ success: false, message: "Not Authorized Login Again" });
         }
 

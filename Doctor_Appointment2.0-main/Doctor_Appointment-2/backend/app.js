@@ -16,6 +16,7 @@ connectCloudinary();
 // Middleware
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  "https://doctor-appointment-nine-phi.vercel.app", // Explicitly allow new domain
   process.env.FRONTEND_URL_LOCAL || "http://localhost:5173"
 ].filter(Boolean);
 
