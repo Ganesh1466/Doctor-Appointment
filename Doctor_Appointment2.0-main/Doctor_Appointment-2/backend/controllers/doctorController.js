@@ -1,6 +1,8 @@
 import Doctor from "../models/Doctor.js";
 import appointmentModel from "../models/Appointment.js";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import supabase from "../config/supabase.js";
 
 export const signupDoctor = async (req, res) => {
   try {
@@ -35,16 +37,25 @@ export const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const doctor = await Doctor.findOne({ email });
-    if (!doctor) return res.status(400).json({ message: "Doctor not found" });
+    // 1. Check if doctor exists in Supabase
+    const { data: doctor, error } = await supabase
+      .from('doctors')
+      .select('*')
+      .eq('email', email)
+      .single();
 
+    if (error || !doctor) return res.status(400).json({ message: "Doctor not found" });
+
+    // 2. Compare password (still using bcrypt as stored in doctors table)
     const isMatch = await bcrypt.compare(password, doctor.password);
     if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    const token = jwt.sign({ id: doctor._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+    // 3. Create token
+    const token = jwt.sign({ id: doctor.id }, process.env.JWT_SECRET, { expiresIn: "1d" });
 
     res.json({ success: true, token });
   } catch (err) {
+    console.error("Doctor Login Error:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -135,10 +146,17 @@ export const doctorDashboard = async (req, res) => {
 // API to get all doctors list for frontend
 export const doctorList = async (req, res) => {
   try {
-    const doctors = await Doctor.find({}).select(['-password', '-email']);
+    const { data: doctors, error } = await supabase
+      .from('doctors')
+      .select('id, name, image, speciality, degree, experience, about, fees, address, available');
+
+    if (error) {
+      return res.json({ success: false, message: error.message });
+    }
+
     res.json({ success: true, doctors });
   } catch (error) {
-    console.log(error);
+    console.log("Doctor List Error:", error);
     res.json({ success: false, message: error.message });
   }
 }

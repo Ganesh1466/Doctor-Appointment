@@ -4,6 +4,7 @@ import { v2 as cloudinary } from "cloudinary";
 import doctorModel from "../models/Doctor.js";
 import jwt from "jsonwebtoken";
 import supabase from "../config/supabase.js";
+import supabaseAdmin from "../config/supabaseAdmin.js";
 
 // API for adding doctor
 const addDoctor = async (req, res) => {
@@ -38,23 +39,38 @@ const addDoctor = async (req, res) => {
             name,
             email,
             image: imageUrl,
-            password: hashedPassword,
+            password: hashedPassword, // Store hashed password if needed, but Supabase Auth is preferred
             speciality,
             degree,
             experience,
             about,
             fees,
-            address: JSON.parse(address),
-            date: Date.now()
+            address: typeof address === 'string' ? address : JSON.stringify(address),
+            date: new Date().toISOString()
         };
 
-        const newDoctor = new doctorModel(doctorData);
-        await newDoctor.save();
+        // Insert into Supabase 'doctors' table
+        const { error: supaError } = await supabase
+            .from('doctors')
+            .insert([doctorData]);
 
-        res.json({ success: true, message: "Doctor Added" });
+        if (supaError) {
+            console.error("Supabase insert error:", supaError);
+            return res.json({ success: false, message: supaError.message });
+        }
+
+        // Keep MongoDB for backup if desired, but prioritize Supabase success
+        try {
+            const newDoctor = new doctorModel(doctorData);
+            await newDoctor.save();
+        } catch (mErr) {
+            console.log("MongoDB backup save failed:", mErr.message);
+        }
+
+        res.json({ success: true, message: "Doctor Added Successfully" });
 
     } catch (error) {
-        console.log(error);
+        console.log("Add Doctor Error:", error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -98,10 +114,17 @@ const loginAdmin = async (req, res) => {
 // API to get all doctors list for admin panel
 const allDoctors = async (req, res) => {
     try {
-        const doctors = await doctorModel.find({}).select("-password");
+        const { data: doctors, error } = await supabase
+            .from('doctors')
+            .select('*');
+
+        if (error) {
+            return res.json({ success: false, message: error.message });
+        }
+
         res.json({ success: true, doctors });
     } catch (error) {
-        console.log(error);
+        console.log("All Doctors Error:", error);
         res.json({ success: false, message: error.message });
     }
 };
@@ -129,14 +152,21 @@ const deleteDoctor = async (req, res) => {
         const doctorEmail = docData.email;
 
         // 2. Delete from Supabase Database (`doctors` table)
-        const { error: dbDeleteError } = await supabase
+        // Use the service-role client so this action bypasses any RLS policies.
+        const { data: deletedDoctors, error: dbDeleteError } = await supabaseAdmin
             .from('doctors')
             .delete()
-            .eq('id', id);
+            .eq('id', id)
+            .select();
 
         if (dbDeleteError) {
             console.error("Supabase delete doctor error:", dbDeleteError);
             return res.json({ success: false, message: dbDeleteError.message });
+        }
+
+        // If nothing was deleted, the id might be invalid or already removed.
+        if (!deletedDoctors || deletedDoctors.length === 0) {
+            return res.json({ success: false, message: "Doctor not found or already deleted." });
         }
 
         // 3. Find the user in Supabase Auth by email and delete them

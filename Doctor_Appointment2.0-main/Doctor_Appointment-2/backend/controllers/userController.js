@@ -5,6 +5,7 @@ import doctorModel from '../models/Doctor.js';
 import appointmentModel from '../models/Appointment.js';
 import validator from 'validator';
 import { v2 as cloudinary } from 'cloudinary';
+import supabase from '../config/supabase.js';
 
 const registerUser = async (req, res) => {
   try {
@@ -106,13 +107,28 @@ const updateProfile = async (req, res) => {
 const bookAppointment = async (req, res) => {
   try {
     const { userId, docId, slotDate, slotTime } = req.body;
-    const docData = await doctorModel.findById(docId).select('-password');
+
+    // 1. Fetch doctor from Supabase
+    const { data: docData, error: supaError } = await supabase
+      .from('doctors')
+      .select('*')
+      .eq('id', docId)
+      .single();
+
+    if (supaError || !docData) {
+      return res.json({ success: false, message: "Doctor not available" });
+    }
 
     if (!docData.available) {
       return res.json({ success: false, message: "Doctor not available" });
     }
 
-    let slots_booked = docData.slots_booked;
+    let slots_booked = docData.slots_booked || {};
+
+    // Convert string slots_booked to object if needed
+    if (typeof slots_booked === 'string') {
+      try { slots_booked = JSON.parse(slots_booked); } catch (e) { slots_booked = {}; }
+    }
 
     // check availability
     if (slots_booked[slotDate]) {
@@ -143,8 +159,15 @@ const bookAppointment = async (req, res) => {
     const newAppointment = new appointmentModel(appointmentData);
     await newAppointment.save();
 
-    // save new slots data to docData
-    await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+    // save new slots data to Supabase
+    const { error: updateError } = await supabase
+      .from('doctors')
+      .update({ slots_booked: JSON.stringify(slots_booked) })
+      .eq('id', docId);
+
+    if (updateError) {
+      console.error("Supabase slot update error:", updateError);
+    }
 
     res.json({ success: true, message: "Appointment Booked" });
 
@@ -181,14 +204,31 @@ const cancelAppointment = async (req, res) => {
 
     await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
 
-    // release doctor slot
+    // release doctor slot in Supabase
     const { docId, slotDate, slotTime } = appointmentData;
-    const doctorData = await doctorModel.findById(docId);
 
-    let slots_booked = doctorData.slots_booked;
-    slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
+    // Fetch current slots
+    const { data: doctorData, error: getError } = await supabase
+      .from('doctors')
+      .select('slots_booked')
+      .eq('id', docId)
+      .single();
 
-    await doctorModel.findByIdAndUpdate(docId, { slots_booked });
+    if (!getError && doctorData) {
+      let slots_booked = doctorData.slots_booked || {};
+      if (typeof slots_booked === 'string') {
+        try { slots_booked = JSON.parse(slots_booked); } catch (e) { slots_booked = {}; }
+      }
+
+      if (slots_booked[slotDate]) {
+        slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
+      }
+
+      await supabase
+        .from('doctors')
+        .update({ slots_booked: JSON.stringify(slots_booked) })
+        .eq('id', docId);
+    }
     res.json({ success: true, message: "Appointment Cancelled" });
 
   } catch (error) {

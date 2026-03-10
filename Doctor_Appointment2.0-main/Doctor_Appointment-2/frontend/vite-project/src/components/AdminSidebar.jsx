@@ -12,6 +12,7 @@ const AdminSidebar = () => {
 
     const handleLogout = async () => {
         sessionStorage.removeItem('adminToken');
+        sessionStorage.removeItem('atoken');
         navigate('/admin-login');
         toast.success("Logged out successfully");
     };
