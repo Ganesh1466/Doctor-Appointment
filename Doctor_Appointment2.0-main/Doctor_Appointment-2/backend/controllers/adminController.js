@@ -105,7 +105,7 @@ const allDoctors = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
-// API to delete doctor permanently from Supabase
+// API to delete doctor permanently from Supabase Database and Auth
 const deleteDoctor = async (req, res) => {
     try {
         const { id } = req.body;
@@ -114,23 +114,56 @@ const deleteDoctor = async (req, res) => {
             return res.json({ success: false, message: "Doctor ID is required." });
         }
 
-        // Delete from Supabase (bypasses RLS since backend uses service_role key)
-        const { error: supaError } = await supabase
+        // 1. Fetch the doctor's email first so we can delete their Auth account
+        const { data: docData, error: fetchError } = await supabase
+            .from('doctors')
+            .select('email')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !docData) {
+            console.error("Supabase fetch doctor error:", fetchError);
+            return res.json({ success: false, message: "Doctor not found in database." });
+        }
+
+        const doctorEmail = docData.email;
+
+        // 2. Delete from Supabase Database (`doctors` table)
+        const { error: dbDeleteError } = await supabase
             .from('doctors')
             .delete()
             .eq('id', id);
 
-        if (supaError) {
-            console.error("Supabase delete doctor error:", supaError);
-            return res.json({ success: false, message: supaError.message });
+        if (dbDeleteError) {
+            console.error("Supabase delete doctor error:", dbDeleteError);
+            return res.json({ success: false, message: dbDeleteError.message });
         }
 
-        // Keep MongoDB deletion in sync just in case the app switches back
+        // 3. Find the user in Supabase Auth by email and delete them
         try {
-            await doctorModel.findByIdAndDelete(id);
-        } catch (mongoErr) {
-            console.log("MongoDB delete skip (expected if using purely Supabase)", mongoErr.message);
+            // NOTE: Supabase Admin is required to interact with auth.users
+            const { data: { users }, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
+
+            if (!listAuthError && users) {
+                const authUser = users.find(u => u.email === doctorEmail);
+                if (authUser) {
+                    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(authUser.id);
+                    if (authDeleteError) {
+                        console.error("Supabase Auth delete error:", authDeleteError);
+                        // We continue even if auth delete fails so the DB delete isn't blocked completely
+                    } else {
+                        console.log(`Successfully deleted ${doctorEmail} from Supabase Auth.`);
+                    }
+                }
+            }
+        } catch (authErr) {
+            console.error("Failed to delete from Supabase Auth:", authErr);
         }
+
+        // 4. (Optional) Remove from MongoDB if you strictly want to ensure parity
+        // try {
+        //     await doctorModel.findByIdAndDelete(id);
+        // } catch (mongoErr) {}
 
         res.json({ success: true, message: "Doctor deleted permanently" });
 
