@@ -36,7 +36,7 @@ const AdminLogin = () => {
                 const backendData = await res.json();
 
                 if (backendData.success) {
-                    sessionStorage.setItem('atoken', backendData.token);
+                    localStorage.setItem('aToken', backendData.token);
                     sessionStorage.setItem('adminToken', JSON.stringify(data[0]));
                     toast.success("Admin Login Successful");
                     navigate('/admin-dashboard');

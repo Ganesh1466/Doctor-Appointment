@@ -51,6 +51,26 @@ const bookAppointment = async (req, res) => {
         const newAppointment = new appointmentModel(appointmentData);
         await newAppointment.save();
 
+        // 2. Save into Supabase 'appointments' table
+        const { error: bookingError } = await supabase
+            .from('appointments')
+            .insert([{
+                user_id: userId,
+                doc_id: docId,
+                slot_date: slotDate,
+                slot_time: slotTime,
+                user_data: userData,
+                doc_data: docData,
+                amount: amount,
+                date: appointmentData.date,
+                status: 'Pending',
+                patient_name: userData.name
+            }]);
+
+        if (bookingError) {
+            console.error("Supabase booking error:", bookingError);
+        }
+
         // Save doctors slot data back to Supabase
         const { error: updateError } = await supabase
             .from('doctors')

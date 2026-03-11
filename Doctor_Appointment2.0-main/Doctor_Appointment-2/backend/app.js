@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
+import morgan from 'morgan';
 import connectDB from './config/db.js';
 import connectCloudinary from './config/cloudinary.js';
 import doctorRoutes from './routes/doctorRoutes.js';
@@ -8,6 +9,7 @@ import appointmentRouter from './routes/appointmentRoutes.js';
 import authRoutes from './routes/authRoutes.js'; // Import Auth Routes
 
 const app = express();
+app.use(morgan('dev'));
 
 // connectDB(); // MongoDB disabled per requirements
 connectCloudinary();

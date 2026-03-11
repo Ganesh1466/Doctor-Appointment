@@ -6,6 +6,7 @@ import appointmentModel from '../models/Appointment.js';
 import validator from 'validator';
 import { v2 as cloudinary } from 'cloudinary';
 import supabase from '../config/supabase.js';
+import { getIO } from '../socket.js';
 
 const registerUser = async (req, res) => {
   try {
@@ -159,6 +160,26 @@ const bookAppointment = async (req, res) => {
     const newAppointment = new appointmentModel(appointmentData);
     await newAppointment.save();
 
+    // 2. Save into Supabase 'appointments' table
+    const { error: bookingError } = await supabase
+      .from('appointments')
+      .insert([{
+        user_id: userId,
+        doc_id: docId,
+        slot_date: slotDate,
+        slot_time: slotTime,
+        user_data: userData,
+        doc_data: docData,
+        amount: docData.fees,
+        date: appointmentData.date,
+        status: 'Pending',
+        patient_name: userData.name
+      }]);
+
+    if (bookingError) {
+      console.error("Supabase booking error:", bookingError);
+    }
+
     // save new slots data to Supabase
     const { error: updateError } = await supabase
       .from('doctors')
@@ -167,6 +188,14 @@ const bookAppointment = async (req, res) => {
 
     if (updateError) {
       console.error("Supabase slot update error:", updateError);
+    }
+
+    // Emit real-time event (using the name the user requested)
+    try {
+        const io = getIO();
+        io.emit('newUserRegistered', { type: 'appointment', date: appointmentData.date });
+    } catch (socketError) {
+        console.error("Socket emit error:", socketError);
     }
 
     res.json({ success: true, message: "Appointment Booked" });

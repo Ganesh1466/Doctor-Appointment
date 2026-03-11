@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { assets } from '../assets/assets';
 
-import { supabase } from '../supabase';
+import BookingAnalyticsChart from '../components/BookingAnalyticsChart';
+import UserRegistrationChart from '../components/UserRegistrationChart';
 import AdminSidebar from '../components/AdminSidebar';
 
 const AdminDashboard = () => {
@@ -16,50 +18,29 @@ const AdminDashboard = () => {
 
 
     useEffect(() => {
-        const fetchCounts = async () => {
+        const fetchDashboardData = async () => {
             try {
-                // Fetch Doctors Count
-                const { count: docCount, error: docError } = await supabase
-                    .from('doctors')
-                    .select('*', { count: 'exact', head: true });
+                const token = localStorage.getItem('aToken'); // Assuming admin token is stored here
+                if (!token) return;
 
-                // Fetch Appointments Count
-                const { count: appCount, error: appError } = await supabase
-                    .from('appointments')
-                    .select('*', { count: 'exact', head: true });
-
-                // Fetch Patients Count (from users table)
-                const { count: userCount, error: userError } = await supabase
-                    .from('users')
-                    .select('*', { count: 'exact', head: true });
-
-                setCounts({
-                    doctors: docCount || 0,
-                    appointments: appCount || 0,
-                    patients: userCount || 0
+                const baseUrl = import.meta.env.VITE_BACKEND_URL || '';
+                const response = await axios.get(`${baseUrl.replace(/\/+$/, '')}/api/admin/dashboard-data`, {
+                    headers: { aToken: token }
                 });
 
-                if (docError) console.error("Error fetching doctors:", docError);
-                if (appError) console.error("Error fetching appointments:", appError);
-                if (userError) console.error("Error fetching users:", userError);
-
-                // Fetch Latest 5 Appointments
-                const { data: latestData, error: latestError } = await supabase
-                    .from('appointments')
-                    .select('*')
-                    .order('date', { ascending: false })
-                    .limit(5);
-
-                if (latestData) setLatestAppointments(latestData);
-                if (latestError) console.error("Error fetching latest appointments:", latestError);
-
+                if (response.data.success) {
+                    setCounts(response.data.counts);
+                    setLatestAppointments(response.data.latestAppointments);
+                } else {
+                    console.error("Failed to fetch dashboard data:", response.data.message);
+                }
 
             } catch (error) {
                 console.error("Error fetching dashboard stats:", error);
             }
         };
 
-        fetchCounts();
+        fetchDashboardData();
     }, []);
 
     return (
@@ -70,6 +51,10 @@ const AdminDashboard = () => {
             {/* Main Content */}
             <div className="flex-1 p-10 overflow-y-auto">
                 <h2 className="text-3xl font-semibold text-gray-800 mb-6">Dashboard Overview</h2>
+
+                <div className="mb-10 max-w-5xl">
+                    <UserRegistrationChart />
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     {/* Stat Card 1 - Doctors */}

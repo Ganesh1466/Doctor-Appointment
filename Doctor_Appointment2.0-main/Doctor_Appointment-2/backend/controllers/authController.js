@@ -1,6 +1,6 @@
-
 import supabase from '../config/supabase.js';
 import supabaseAdmin from '../config/supabaseAdmin.js';
+import { getIO } from '../socket.js';
 
 // @desc    Register a new user
 // @route   POST /api/auth/signup
@@ -49,6 +49,14 @@ const registerUser = async (req, res, next) => {
         }
 
         console.log("Signup successful in Supabase for:", email);
+
+        // Emit real-time event
+        try {
+            const io = getIO();
+            io.emit('newUserRegistered', { email, name, created_at: new Date().toISOString() });
+        } catch (socketError) {
+            console.error("Socket emit error:", socketError);
+        }
 
         res.status(201).json({
             success: true,

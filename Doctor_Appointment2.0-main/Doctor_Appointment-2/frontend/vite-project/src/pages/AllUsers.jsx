@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
 import { assets } from '../assets/assets';
 import AdminSidebar from '../components/AdminSidebar';
+import UserLoginChart from '../components/UserLoginChart';
 import { toast } from 'react-toastify';
 
 const AllUsers = () => {
@@ -56,20 +57,6 @@ const AllUsers = () => {
         return new Date(dateString).toLocaleDateString();
     };
 
-    // Calculate Chart Data (Users per Month)
-    const getChartData = () => {
-        const counts = {};
-        users.forEach(user => {
-            const date = new Date(user.created_at);
-            const month = date.toLocaleString('default', { month: 'short' });
-            counts[month] = (counts[month] || 0) + 1;
-        });
-        return Object.entries(counts).map(([month, count]) => ({ month, count }));
-    };
-
-    const chartData = getChartData();
-    const maxCount = Math.max(...chartData.map(d => d.count), 1);
-
     return (
         <div className="flex h-screen bg-gray-100">
             <AdminSidebar />
@@ -77,30 +64,8 @@ const AllUsers = () => {
             <div className="flex-1 p-10 overflow-y-auto">
                 <h2 className="text-3xl font-bold text-gray-800 mb-6 tracking-tight">User Analytics</h2>
 
-                {/* Real-time Chart Section */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
-                    <h3 className="text-lg font-bold text-gray-700 mb-6 flex items-center gap-2">
-                        <span className="w-2 h-6 bg-blue-500 rounded-full"></span>
-                        User Registrations
-                    </h3>
-                    <div className="flex items-end gap-4 h-48 border-b border-gray-100 pb-2">
-                        {chartData.length > 0 ? chartData.map((data, index) => (
-                            <div key={index} className="flex flex-col items-center flex-1">
-                                <div
-                                    className="w-full bg-blue-500/90 rounded-t-md hover:bg-blue-600 transition-all duration-300 relative group cursor-pointer"
-                                    style={{ height: `${(data.count / maxCount) * 100}%` }}
-                                >
-                                    <span className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs font-bold py-1 px-3 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                                        {data.count} Users
-                                    </span>
-                                </div>
-                                <span className="text-xs font-medium text-gray-400 mt-3">{data.month}</span>
-                            </div>
-                        )) : (
-                            <p className="text-gray-400 w-full text-center self-center text-sm">No data to display</p>
-                        )}
-                    </div>
-                </div>
+                {/* User Login Analytics */}
+                <UserLoginChart />
 
                 {/* User List Table */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
