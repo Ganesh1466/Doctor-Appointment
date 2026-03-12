@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import supabase from '../config/supabase.js';
 
 const authUser = async (req, res, next) => {
     try {
@@ -13,22 +13,30 @@ const authUser = async (req, res, next) => {
 
         const token = authHeader.split(" ")[1];
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // Verify the token using Supabase
+        const { data: { user }, error } = await supabase.auth.getUser(token);
 
-        req.user = decoded;
+        if (error || !user) {
+            console.log("Auth Middleware Error:", error?.message || "User not found");
+            return res.status(401).json({
+                success: false,
+                message: "Invalid or expired token"
+            });
+        }
+
+        // Attach user info to request
+        req.user = user;
 
         next();
 
     } catch (error) {
-        console.log("Auth Middleware Error:", error.message);
+        console.log("Auth Middleware Catch Error:", error.message);
 
         return res.status(401).json({
             success: false,
-            message: "Invalid or expired token"
+            message: "Authentication failed"
         });
     }
-
-
 }
 
 export default authUser;

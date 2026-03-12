@@ -24,12 +24,6 @@ const UserDashboard = () => {
                     to="/my-appointments"
                     className="group p-6 border rounded-xl hover:shadow-xl transition-all duration-300 border-green-100 bg-green-50 hover:bg-white"
                 >
-                    {/* Note: In App.jsx the route is /appointment/:docId for MyAppointment but logical route usually is /my-appointments. 
-               The user asked to run routes, I need to check App.jsx again. 
-               App.jsx has: <Route path='/appointment/:docId' element={<MyAppointment />} />
-               Wait, that looks like a bug in App.jsx (same path as Appointment).
-               I will assume I should fix the route for MyAppointment to be distinct, e.g., /my-appointments
-           */}
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-semibold text-gray-700 group-hover:text-green-600">My Appointments</h2>
                         <span className="text-3xl">📅</span>

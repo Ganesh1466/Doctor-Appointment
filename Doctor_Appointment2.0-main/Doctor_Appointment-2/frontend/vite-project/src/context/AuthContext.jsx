@@ -10,13 +10,17 @@ export const AuthProvider = ({ children }) => {
 
     // Initialize auth session
     useEffect(() => {
+        let mounted = true;
+
         const initAuth = async () => {
             try {
+                // Get session once
                 const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (!mounted) return;
 
                 if (error) {
                     console.error("Auth Session Error:", error.message);
-                    // Handle "Refresh Token Not Found" by signing out to clear state
                     if (
                         error.message.includes("Refresh Token Not Found") ||
                         error.message.includes("invalid refresh token")
@@ -29,7 +33,7 @@ export const AuthProvider = ({ children }) => {
             } catch (err) {
                 console.error("Unexpected auth error during init:", err);
             } finally {
-                setLoading(false);
+                if (mounted) setLoading(false);
             }
         };
 
@@ -38,12 +42,17 @@ export const AuthProvider = ({ children }) => {
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             (_event, session) => {
-                setUser(session?.user ?? null);
-                setLoading(false);
+                if (mounted) {
+                    setUser(session?.user ?? null);
+                    setLoading(false);
+                }
             }
         );
 
-        return () => subscription.unsubscribe();
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
     // Check if user is admin

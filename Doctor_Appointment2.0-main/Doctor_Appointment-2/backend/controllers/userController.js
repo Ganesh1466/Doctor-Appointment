@@ -1,13 +1,10 @@
-import User from '../models/User.js';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import doctorModel from '../models/Doctor.js';
-import appointmentModel from '../models/Appointment.js';
 import validator from 'validator';
 import { v2 as cloudinary } from 'cloudinary';
 import supabase from '../config/supabase.js';
+import supabaseAdmin from '../config/supabaseAdmin.js';
 import { getIO } from '../socket.js';
 
+// API to register user
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -24,39 +21,50 @@ const registerUser = async (req, res) => {
       return res.json({ success: false, message: "Enter Strong Password" });
     }
 
-    const exist = await User.findOne({ email });
-    if (exist) return res.status(400).json({ success: false, message: 'User already exists' });
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const newUser = new User({
-      name,
+    const { data, error } = await supabase.auth.signUp({
       email,
-      password: hashedPassword
+      password,
+      options: {
+        data: { name }
+      }
     });
 
-    const user = await newUser.save();
+    if (error) {
+      return res.json({ success: false, message: error.message });
+    }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-    res.json({ success: true, token, user });
+    // Sync to 'users' table
+    const { error: syncError } = await supabaseAdmin
+      .from('users')
+      .upsert({
+        id: data.user.id,
+        email: email,
+        name: name
+      });
+
+    if (syncError) console.error("Sync error:", syncError);
+
+    res.json({ success: true, user: data.user, session: data.session });
 
   } catch (err) {
     res.json({ success: false, message: err.message });
   }
 };
 
+// API to login user
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.json({ success: false, message: 'User not found' });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.json({ success: false, message: 'Invalid credentials' });
+    if (error) {
+      return res.json({ success: false, message: error.message });
+    }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-    res.json({ success: true, token });
+    res.json({ success: true, session: data.session, user: data.user });
 
   } catch (err) {
     res.json({ success: false, message: err.message });
@@ -67,7 +75,14 @@ const loginUser = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const { userId } = req.body;
-    const userData = await User.findById(userId).select('-password');
+    
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) throw error;
 
     res.json({ success: true, userData });
   } catch (error) {
@@ -79,21 +94,39 @@ const getProfile = async (req, res) => {
 // API to update user profile
 const updateProfile = async (req, res) => {
   try {
-    const { userId, name, phone, address, dob, gender } = req.body;
+    const { name, phone, address, dob, gender } = req.body;
     const imageFile = req.file;
+
+    const userEmail = req.user.email;
+    const supaId = req.user.id;
 
     if (!name || !phone || !dob || !gender) {
       return res.json({ success: false, message: "Data Missing" });
     }
 
-    await User.findByIdAndUpdate(userId, { name, phone, address: JSON.parse(address), dob, gender });
-
+    let imageURL = "";
     if (imageFile) {
-      // upload image to cloudinary
       const imageUpload = await cloudinary.uploader.upload(imageFile.path, { resource_type: "image" });
-      const imageURL = imageUpload.secure_url;
+      imageURL = imageUpload.secure_url;
+    }
 
-      await User.findByIdAndUpdate(userId, { image: imageURL });
+    const updateData = {
+      name,
+      phone,
+      address: typeof address === 'string' ? JSON.parse(address) : address,
+      dob,
+      gender
+    };
+
+    if (imageURL) updateData.image = imageURL;
+
+    const { error: supaError } = await supabaseAdmin
+      .from('users')
+      .update(updateData)
+      .eq('id', supaId);
+
+    if (supaError) {
+      throw supaError;
     }
 
     res.json({ success: true, message: "Profile Updated" });
@@ -107,7 +140,8 @@ const updateProfile = async (req, res) => {
 // API to book appointment
 const bookAppointment = async (req, res) => {
   try {
-    const { userId, docId, slotDate, slotTime } = req.body;
+    const { docId, slotDate, slotTime } = req.body;
+    const supaId = req.user.id;
 
     // 1. Fetch doctor from Supabase
     const { data: docData, error: supaError } = await supabase
@@ -125,13 +159,10 @@ const bookAppointment = async (req, res) => {
     }
 
     let slots_booked = docData.slots_booked || {};
-
-    // Convert string slots_booked to object if needed
     if (typeof slots_booked === 'string') {
       try { slots_booked = JSON.parse(slots_booked); } catch (e) { slots_booked = {}; }
     }
 
-    // check availability
     if (slots_booked[slotDate]) {
       if (slots_booked[slotDate].includes(slotTime)) {
         return res.json({ success: false, message: "Slot not available" });
@@ -139,61 +170,48 @@ const bookAppointment = async (req, res) => {
         slots_booked[slotDate].push(slotTime);
       }
     } else {
-      slots_booked[slotDate] = [];
-      slots_booked[slotDate].push(slotTime);
+      slots_booked[slotDate] = [slotTime];
     }
 
-    const userData = await User.findById(userId).select('-password');
-    delete docData.slots_booked;
+    // Fetch user data from Supabase
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', supaId)
+      .single();
 
-    const appointmentData = {
-      userId,
-      docId,
-      userData,
-      docData,
-      amount: docData.fees,
-      slotTime,
-      slotDate,
-      date: Date.now()
-    };
+    if (userError) throw userError;
 
-    const newAppointment = new appointmentModel(appointmentData);
-    await newAppointment.save();
+    const appointmentDate = Date.now();
 
     // 2. Save into Supabase 'appointments' table
-    const { error: bookingError } = await supabase
+    const { error: bookingError } = await supabaseAdmin
       .from('appointments')
       .insert([{
-        user_id: userId,
+        user_id: supaId,
         doc_id: docId,
         slot_date: slotDate,
         slot_time: slotTime,
         user_data: userData,
-        doc_data: docData,
+        doc_data: { ...docData, slots_booked: undefined },
         amount: docData.fees,
-        date: appointmentData.date,
+        date: appointmentDate,
         status: 'Pending',
         patient_name: userData.name
       }]);
 
-    if (bookingError) {
-      console.error("Supabase booking error:", bookingError);
-    }
+    if (bookingError) throw bookingError;
 
     // save new slots data to Supabase
-    const { error: updateError } = await supabase
+    await supabase
       .from('doctors')
       .update({ slots_booked: JSON.stringify(slots_booked) })
       .eq('id', docId);
 
-    if (updateError) {
-      console.error("Supabase slot update error:", updateError);
-    }
-
-    // Emit real-time event (using the name the user requested)
+    // Emit real-time event
     try {
         const io = getIO();
-        io.emit('newUserRegistered', { type: 'appointment', date: appointmentData.date });
+        io.emit('newUserRegistered', { type: 'appointment', date: appointmentDate });
     } catch (socketError) {
         console.error("Socket emit error:", socketError);
     }
@@ -209,8 +227,13 @@ const bookAppointment = async (req, res) => {
 // API for user appointments listing
 const listAppointment = async (req, res) => {
   try {
-    const { userId } = req.body;
-    const appointments = await appointmentModel.find({ userId });
+    const supaId = req.user.id;
+    const { data: appointments, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('user_id', supaId);
+
+    if (error) throw error;
 
     res.json({ success: true, appointments });
 
@@ -223,24 +246,33 @@ const listAppointment = async (req, res) => {
 // API to cancel appointment
 const cancelAppointment = async (req, res) => {
   try {
-    const { userId, appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId);
+    const { appointmentId } = req.body;
+    const supaId = req.user.id;
 
-    // verify appointment user
-    if (appointmentData.userId !== userId) {
+    const { data: appointmentData, error: fetchError } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', appointmentId)
+      .single();
+
+    if (fetchError || !appointmentData) throw new Error("Appointment not found");
+
+    if (appointmentData.user_id !== supaId) {
       return res.json({ success: false, message: "Unauthorized action" });
     }
 
-    await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
+    await supabaseAdmin
+      .from('appointments')
+      .update({ status: 'Cancelled' })
+      .eq('id', appointmentId);
 
-    // release doctor slot in Supabase
-    const { docId, slotDate, slotTime } = appointmentData;
+    // release doctor slot
+    const { doc_id, slot_date, slot_time } = appointmentData;
 
-    // Fetch current slots
     const { data: doctorData, error: getError } = await supabase
       .from('doctors')
       .select('slots_booked')
-      .eq('id', docId)
+      .eq('id', doc_id)
       .single();
 
     if (!getError && doctorData) {
@@ -249,14 +281,14 @@ const cancelAppointment = async (req, res) => {
         try { slots_booked = JSON.parse(slots_booked); } catch (e) { slots_booked = {}; }
       }
 
-      if (slots_booked[slotDate]) {
-        slots_booked[slotDate] = slots_booked[slotDate].filter(e => e !== slotTime);
+      if (slots_booked[slot_date]) {
+        slots_booked[slot_date] = slots_booked[slot_date].filter(e => e !== slot_time);
       }
 
       await supabase
         .from('doctors')
         .update({ slots_booked: JSON.stringify(slots_booked) })
-        .eq('id', docId);
+        .eq('id', doc_id);
     }
     res.json({ success: true, message: "Appointment Cancelled" });
 

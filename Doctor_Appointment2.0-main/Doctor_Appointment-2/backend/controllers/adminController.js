@@ -1,7 +1,6 @@
 import validator from "validator";
 import bcrypt from "bcrypt";
 import { v2 as cloudinary } from "cloudinary";
-import doctorModel from "../models/Doctor.js";
 import jwt from "jsonwebtoken";
 import supabase from "../config/supabase.js";
 import supabaseAdmin from "../config/supabaseAdmin.js";
@@ -32,14 +31,17 @@ const addDoctor = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, salt);
 
         // upload image to cloudinary
-        const imageUpload = await cloudinary.uploader.upload(imageFile.path, { resource_type: "image" });
-        const imageUrl = imageUpload.secure_url;
+        let imageUrl = "";
+        if (imageFile) {
+            const imageUpload = await cloudinary.uploader.upload(imageFile.path, { resource_type: "image" });
+            imageUrl = imageUpload.secure_url;
+        }
 
         const doctorData = {
             name,
             email,
             image: imageUrl,
-            password: hashedPassword, // Store hashed password if needed, but Supabase Auth is preferred
+            password: hashedPassword,
             speciality,
             degree,
             experience,
@@ -57,14 +59,6 @@ const addDoctor = async (req, res) => {
         if (supaError) {
             console.error("Supabase insert error:", supaError);
             return res.json({ success: false, message: supaError.message });
-        }
-
-        // Keep MongoDB for backup if desired, but prioritize Supabase success
-        try {
-            const newDoctor = new doctorModel(doctorData);
-            await newDoctor.save();
-        } catch (mErr) {
-            console.log("MongoDB backup save failed:", mErr.message);
         }
 
         res.json({ success: true, message: "Doctor Added Successfully" });
@@ -92,7 +86,6 @@ const loginAdmin = async (req, res) => {
         }
 
         if (data && data.length > 0) {
-            // Sign a standard object payload
             const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET);
             return res.json({ success: true, token });
         }
@@ -128,7 +121,8 @@ const allDoctors = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
-// API to delete doctor permanently from Supabase Database and Auth
+
+// API to delete doctor permanently
 const deleteDoctor = async (req, res) => {
     try {
         const { id } = req.body;
@@ -137,7 +131,6 @@ const deleteDoctor = async (req, res) => {
             return res.json({ success: false, message: "Doctor ID is required." });
         }
 
-        // 1. Fetch the doctor's email first so we can delete their Auth account
         const { data: docData, error: fetchError } = await supabase
             .from('doctors')
             .select('email')
@@ -145,55 +138,32 @@ const deleteDoctor = async (req, res) => {
             .single();
 
         if (fetchError || !docData) {
-            console.error("Supabase fetch doctor error:", fetchError);
             return res.json({ success: false, message: "Doctor not found in database." });
         }
 
         const doctorEmail = docData.email;
 
-        // 2. Delete from Supabase Database (`doctors` table)
-        // Use the service-role client so this action bypasses any RLS policies.
-        const { data: deletedDoctors, error: dbDeleteError } = await supabaseAdmin
+        const { error: dbDeleteError } = await supabaseAdmin
             .from('doctors')
             .delete()
-            .eq('id', id)
-            .select();
+            .eq('id', id);
 
         if (dbDeleteError) {
-            console.error("Supabase delete doctor error:", dbDeleteError);
             return res.json({ success: false, message: dbDeleteError.message });
         }
 
-        // If nothing was deleted, the id might be invalid or already removed.
-        if (!deletedDoctors || deletedDoctors.length === 0) {
-            return res.json({ success: false, message: "Doctor not found or already deleted." });
-        }
-
-        // 3. Find the user in Supabase Auth by email and delete them
+        // Find and delete from Auth
         try {
-            // NOTE: Supabase Admin is required to interact with auth.users
             const { data: { users }, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
-
             if (!listAuthError && users) {
                 const authUser = users.find(u => u.email === doctorEmail);
                 if (authUser) {
-                    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(authUser.id);
-                    if (authDeleteError) {
-                        console.error("Supabase Auth delete error:", authDeleteError);
-                        // We continue even if auth delete fails so the DB delete isn't blocked completely
-                    } else {
-                        console.log(`Successfully deleted ${doctorEmail} from Supabase Auth.`);
-                    }
+                    await supabaseAdmin.auth.admin.deleteUser(authUser.id);
                 }
             }
         } catch (authErr) {
-            console.error("Failed to delete from Supabase Auth:", authErr);
+            console.error("Auth delete error:", authErr);
         }
-
-        // 4. (Optional) Remove from MongoDB if you strictly want to ensure parity
-        // try {
-        //     await doctorModel.findByIdAndDelete(id);
-        // } catch (mongoErr) {}
 
         res.json({ success: true, message: "Doctor deleted permanently" });
 
@@ -203,20 +173,16 @@ const deleteDoctor = async (req, res) => {
     }
 };
 
-// API to provide month-wise user registration/login stats (for dashboard analytics)
+// Dashboard Stats Controllers
 const getLoginStats = async (req, res) => {
     try {
-        // Fetch users from Supabase Auth using the Admin client (service role key)
         const perPage = 100;
         let page = 1;
         const allUsers = [];
 
         while (true) {
             const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-            if (error) {
-                console.error("Supabase listUsers error:", error);
-                return res.status(500).json({ success: false, message: error.message || "Unable to fetch users" });
-            }
+            if (error) throw error;
 
             const users = data?.users || [];
             if (!users.length) break;
@@ -225,7 +191,6 @@ const getLoginStats = async (req, res) => {
             page += 1;
         }
 
-        // Build a consistent month ordering (last 12 months)
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const now = new Date();
         const months = [];
@@ -241,45 +206,27 @@ const getLoginStats = async (req, res) => {
         allUsers.forEach((user) => {
             const createdAt = user?.created_at;
             const dt = createdAt ? new Date(createdAt) : null;
-            if (!dt || Number.isNaN(dt.getTime())) return;
-
+            if (!dt || isNaN(dt.getTime())) return;
             const key = `${dt.getFullYear()}-${dt.getMonth() + 1}`;
-            if (monthMap[key] !== undefined) {
-                monthMap[key] += 1;
-            }
+            if (monthMap[key] !== undefined) monthMap[key] += 1;
         });
 
-        const result = months.map((m) => ({ month: m.month, logins: monthMap[m.key] || 0 }));
-
-        res.json(result);
+        res.json(months.map((m) => ({ month: m.month, logins: monthMap[m.key] })));
     } catch (error) {
-        console.error("Login stats error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// API to provide month-wise booking stats for Dashboard analytics
 const getBookingStats = async (req, res) => {
     try {
-        // Fetch all appointments from Supabase
-        // Note: Using service role (supabaseAdmin) to bypass RLS for dashboard analytics
-        const { data, error } = await supabaseAdmin
-            .from('appointments')
-            .select('date');
-
-        if (error) {
-            console.error('Supabase booking stats error:', error);
-            // Return empty stats instead of 500 to keep the UI functioning
-            // This is often due to the "appointments" table not being created yet.
-            return res.json([]);
-        }
+        const { data, error } = await supabaseAdmin.from('appointments').select('date');
+        if (error) return res.json([]);
 
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const now = new Date();
         const months = [];
         const monthMap = {};
 
-        // Build key map for the last 12 months
         for (let i = 11; i >= 0; i -= 1) {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
             const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
@@ -288,27 +235,18 @@ const getBookingStats = async (req, res) => {
         }
 
         (data || []).forEach((row) => {
-            const timestamp = row?.date;
-            // Handle both numeric strings/numbers and ISO date strings
-            const dt = timestamp ? (isNaN(timestamp) ? new Date(timestamp) : new Date(Number(timestamp))) : null;
-            if (!dt || Number.isNaN(dt.getTime())) return;
-
+            const dt = row.date ? (isNaN(row.date) ? new Date(row.date) : new Date(Number(row.date))) : null;
+            if (!dt || isNaN(dt.getTime())) return;
             const key = `${dt.getFullYear()}-${dt.getMonth() + 1}`;
-            if (monthMap[key] !== undefined) {
-                monthMap[key] += 1;
-            }
+            if (monthMap[key] !== undefined) monthMap[key] += 1;
         });
 
-        const result = months.map((m) => ({ month: m.month, bookings: monthMap[m.key] || 0 }));
-
-        res.json(result);
+        res.json(months.map((m) => ({ month: m.month, bookings: monthMap[m.key] })));
     } catch (error) {
-        console.error('Booking stats logic error:', error);
-        res.json([]); // Fail silently with empty data
+        res.json([]);
     }
 };
 
-// API to get registration stats (based on appointments to reach the 47 total)
 const getRegistrationStats = async (req, res) => {
     try {
         const { data, error } = await supabaseAdmin.from('appointments').select('date');
@@ -327,30 +265,20 @@ const getRegistrationStats = async (req, res) => {
         }
 
         (data || []).forEach((row) => {
-            const timestamp = row?.date;
-            const dt = timestamp ? (isNaN(timestamp) ? new Date(timestamp) : new Date(Number(timestamp))) : null;
-            if (!dt || Number.isNaN(dt.getTime())) return;
-
+            const dt = row.date ? (isNaN(row.date) ? new Date(row.date) : new Date(Number(row.date))) : null;
+            if (!dt || isNaN(dt.getTime())) return;
             const key = `${dt.getFullYear()}-${dt.getMonth() + 1}`;
-            if (monthMap[key] !== undefined) {
-                monthMap[key] += 1;
-            }
+            if (monthMap[key] !== undefined) monthMap[key] += 1;
         });
 
-        const result = months.map((m) => ({ month: m.month, registrations: monthMap[m.key] || 0 }));
-
-        res.json(result);
+        res.json(months.map((m) => ({ month: m.month, registrations: monthMap[m.key] })));
     } catch (error) {
-        console.error('Registration stats logic error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-
-// API to get all dashboard data (counts and latest appointments)
 const getDashboardData = async (req, res) => {
     try {
-        // Fetch counts in parallel for better performance
         const [docRes, appRes, userRes] = await Promise.all([
             supabaseAdmin.from('doctors').select('*', { count: 'exact', head: true }),
             supabaseAdmin.from('appointments').select('*', { count: 'exact', head: true }),
@@ -361,7 +289,6 @@ const getDashboardData = async (req, res) => {
         if (appRes.error) throw appRes.error;
         if (userRes.error) throw userRes.error;
 
-        // Fetch latest 5 appointments
         const { data: latestAppointments, error: latestError } = await supabaseAdmin
             .from('appointments')
             .select('*')
@@ -381,7 +308,6 @@ const getDashboardData = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Dashboard data error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

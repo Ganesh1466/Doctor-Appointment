@@ -2,16 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
 import morgan from 'morgan';
-import connectDB from './config/db.js';
 import connectCloudinary from './config/cloudinary.js';
 import doctorRoutes from './routes/doctorRoutes.js';
 import appointmentRouter from './routes/appointmentRoutes.js';
 import authRoutes from './routes/authRoutes.js'; // Import Auth Routes
+import supabase from './config/supabase.js';
 
 const app = express();
 app.use(morgan('dev'));
 
-// connectDB(); // MongoDB disabled per requirements
 connectCloudinary();
 
 
@@ -47,8 +46,37 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/appointments", appointmentRouter);
 
-app.get('/api/test-400', (req, res) => {
-  res.status(400).json({ message: 'Test 400 Error' });
+app.get('/api/debug-db', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .limit(1);
+
+    if (error) {
+      return res.status(500).json({ success: false, error: error.message, details: error });
+    }
+
+    const columns = data.length > 0 ? Object.keys(data[0]) : "No rows found to determine columns";
+    
+    // Test the specific query that is failing in the frontend
+    const docId = '103cca86-0e9a-4945-88bc-fc8c610c75bb';
+    const { error: queryError } = await supabase
+      .from('appointments')
+      .select('slot_date, slot_time')
+      .eq('doc_id', docId)
+      .neq('status', 'Cancelled');
+
+    res.json({ 
+      success: true, 
+      columns, 
+      sampleData: data[0],
+      testQueryError: queryError ? queryError.message : "None",
+      testQueryDetails: queryError
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.get('/', (req, res) => {

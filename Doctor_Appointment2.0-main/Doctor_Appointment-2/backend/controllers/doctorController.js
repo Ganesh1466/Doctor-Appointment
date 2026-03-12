@@ -1,19 +1,23 @@
-import Doctor from "../models/Doctor.js";
-import appointmentModel from "../models/Appointment.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import supabase from "../config/supabase.js";
+import supabaseAdmin from "../config/supabaseAdmin.js";
 
 export const signupDoctor = async (req, res) => {
   try {
     const { name, email, password, speciality, degree, experience, about, fees, address, date } = req.body;
 
-    const existingDoctor = await Doctor.findOne({ email });
+    const { data: existingDoctor } = await supabase
+      .from('doctors')
+      .select('email')
+      .eq('email', email)
+      .single();
+
     if (existingDoctor) return res.status(400).json({ message: "Doctor already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newDoctor = new Doctor({
+    const doctorData = {
       name,
       email,
       password: hashedPassword,
@@ -23,10 +27,15 @@ export const signupDoctor = async (req, res) => {
       about,
       fees,
       address,
-      date
-    });
+      date: date || new Date().toISOString()
+    };
 
-    await newDoctor.save();
+    const { error } = await supabaseAdmin
+      .from('doctors')
+      .insert([doctorData]);
+
+    if (error) throw error;
+
     res.status(201).json({ message: "Doctor registered successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -37,7 +46,6 @@ export const loginDoctor = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Check if doctor exists in Supabase
     const { data: doctor, error } = await supabase
       .from('doctors')
       .select('*')
@@ -46,12 +54,10 @@ export const loginDoctor = async (req, res) => {
 
     if (error || !doctor) return res.status(400).json({ message: "Doctor not found" });
 
-    // 2. Compare password (still using bcrypt as stored in doctors table)
     const isMatch = await bcrypt.compare(password, doctor.password);
     if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    // 3. Create token
-    const token = jwt.sign({ id: doctor.id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+    const token = jwt.sign({ id: doctor.id, role: 'doctor' }, process.env.JWT_SECRET, { expiresIn: "1d" });
 
     res.json({ success: true, token });
   } catch (err) {
@@ -64,7 +70,13 @@ export const loginDoctor = async (req, res) => {
 export const appointmentsDoctor = async (req, res) => {
   try {
     const { docId } = req.body;
-    const appointments = await appointmentModel.find({ docId });
+    const { data: appointments, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('doc_id', docId);
+
+    if (error) throw error;
+
     res.json({ success: true, appointments });
   } catch (error) {
     console.log(error);
@@ -76,10 +88,22 @@ export const appointmentsDoctor = async (req, res) => {
 export const appointmentComplete = async (req, res) => {
   try {
     const { docId, appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId);
+    
+    const { data: appointmentData, error: fetchError } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', appointmentId)
+      .single();
 
-    if (appointmentData && appointmentData.docId === docId) {
-      await appointmentModel.findByIdAndUpdate(appointmentId, { isCompleted: true });
+    if (fetchError || !appointmentData) throw new Error("Appointment not found");
+
+    if (appointmentData.doc_id === docId) {
+      const { error: updateError } = await supabaseAdmin
+        .from('appointments')
+        .update({ status: 'Completed', isCompleted: true })
+        .eq('id', appointmentId);
+
+      if (updateError) throw updateError;
       return res.json({ success: true, message: "Appointment Completed" });
     } else {
       return res.json({ success: false, message: "Mark Failed" });
@@ -95,10 +119,22 @@ export const appointmentComplete = async (req, res) => {
 export const appointmentCancel = async (req, res) => {
   try {
     const { docId, appointmentId } = req.body;
-    const appointmentData = await appointmentModel.findById(appointmentId);
 
-    if (appointmentData && appointmentData.docId === docId) {
-      await appointmentModel.findByIdAndUpdate(appointmentId, { cancelled: true });
+    const { data: appointmentData, error: fetchError } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', appointmentId)
+      .single();
+
+    if (fetchError || !appointmentData) throw new Error("Appointment not found");
+
+    if (appointmentData.doc_id === docId) {
+      const { error: updateError } = await supabaseAdmin
+        .from('appointments')
+        .update({ status: 'Cancelled', cancelled: true })
+        .eq('id', appointmentId);
+
+      if (updateError) throw updateError;
       return res.json({ success: true, message: "Appointment Cancelled" });
     } else {
       return res.json({ success: false, message: "Cancellation Failed" });
@@ -114,17 +150,22 @@ export const appointmentCancel = async (req, res) => {
 export const doctorDashboard = async (req, res) => {
   try {
     const { docId } = req.body;
-    const appointments = await appointmentModel.find({ docId });
+    const { data: appointments, error } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('doc_id', docId);
+
+    if (error) throw error;
 
     let earnings = 0;
     let patients = [];
 
     appointments.map((item) => {
-      if (item.isCompleted || item.payment) {
+      if (item.status === 'Completed' || item.isCompleted || item.payment) {
         earnings += item.amount;
       }
-      if (!patients.includes(item.userId)) {
-        patients.push(item.userId);
+      if (!patients.includes(item.user_id)) {
+        patients.push(item.user_id);
       }
     });
 

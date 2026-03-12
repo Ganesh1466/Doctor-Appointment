@@ -27,7 +27,7 @@ const UserRegistrationChart = () => {
         return;
       }
 
-      const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+      const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
       const response = await axios.get(`${baseUrl.replace(/\/+$/, '')}/api/admin/registration-stats`, {
         headers: { aToken: token }
       });
@@ -45,7 +45,7 @@ const UserRegistrationChart = () => {
     fetchStats();
 
     // Set up real-time socket listener
-    const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+    const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
     const socket = io(baseUrl.replace(/\/+$/, ''));
 
     socket.on('newUserRegistered', (newUser) => {

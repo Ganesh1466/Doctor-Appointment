@@ -105,49 +105,60 @@ const Myprofile = () => {
   }
 
   const handleSave = async () => {
-
-    if (userData.phone && userData.phone.length !== 10) {
-      toast.error("Phone number must be exactly 10 digits");
-      return;
-    }
-
-    if (userData.dob) {
-      const selectedDate = new Date(userData.dob);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0)
-
-      if (selectedDate > today) {
-        toast.error("Birthday cannot be in the future");
+    try {
+      if (userData.phone && userData.phone.length !== 10) {
+        toast.error("Phone number must be exactly 10 digits");
         return;
       }
-    }
 
-    try {
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          id: user.id,
-          email: userData.email,
+      if (userData.dob) {
+        const selectedDate = new Date(userData.dob);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0)
+
+        if (selectedDate > today) {
+          toast.error("Birthday cannot be in the future");
+          return;
+        }
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Session expired. Please log in again.");
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/user/update-profile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
           name: userData.name,
           phone: userData.phone,
-          address: userData.address,
+          address: JSON.stringify(userData.address),
           gender: userData.gender,
-          dob: userData.dob,
-          image: userData.image
-        });
+          dob: userData.dob
+        })
+      });
 
-      if (error) throw error;
+      const result = await response.json();
 
-      toast.success("Profile updated successfully");
-      setIsEdit(false);
+      if (result.success) {
+        toast.success("Profile updated successfully");
+        setIsEdit(false);
+        await fetchProfile(); // Refresh local data
+      } else {
+        toast.error(result.message || "Failed to update profile");
+      }
 
     } catch (error) {
       console.error("Update error:", error);
-      toast.error("Failed to update profile");
+      toast.error(error.message || "Failed to update profile");
     }
   };
 
-  if (loading) return <div className="text-center mt-20">Loading profile...</div>;
 
   return (
     <>

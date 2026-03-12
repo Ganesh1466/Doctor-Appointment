@@ -26,11 +26,23 @@ const DeleteDoctor = () => {
         if (window.confirm(`Are you sure you want to PERMANENTLY delete Dr. ${name}?`)) {
             try {
                 // Call backend API to delete securely (bypassing RLS with admin scope)
+                const getValidToken = () => {
+                    const sToken = sessionStorage.getItem('adminToken');
+                    const lToken = localStorage.getItem('aToken');
+
+                    // Check if token looks like a JWT (3 parts separated by dots)
+                    const isValidToken = (t) => t && t.split('.').length === 3;
+
+                    if (isValidToken(sToken)) return sToken;
+                    if (isValidToken(lToken)) return lToken;
+                    return '';
+                };
+
                 const config = {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'atoken': sessionStorage.getItem('atoken') || ''
+                        'atoken': getValidToken()
                     },
                     body: JSON.stringify({ id })
                 };

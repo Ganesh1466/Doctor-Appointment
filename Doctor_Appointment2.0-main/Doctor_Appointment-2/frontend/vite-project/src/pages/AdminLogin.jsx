@@ -1,54 +1,56 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
-import { supabase } from '../supabase';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 const AdminLogin = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const { signIn } = useAuth();
+    const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
     const onSubmitHandler = async (event) => {
         event.preventDefault();
+
+        if (loading) return;
+
         try {
-            // Direct Database Query for Custom Auth
-            const { data, error } = await supabase
-                .from('admins')
-                .select('*') // Select all including password
-                .eq('email', email)
-                .eq('password', password); // Direct matching
+            setLoading(true);
 
-            if (error) {
-                toast.error(error.message);
-            } else if (data && data.length > 0) {
-                // Now get the backend JWT token
-                const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-                const res = await fetch(`${backendUrl}/api/admin/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
-                const backendData = await res.json();
+            const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
-                if (backendData.success) {
-                    localStorage.setItem('aToken', backendData.token);
-                    sessionStorage.setItem('adminToken', JSON.stringify(data[0]));
-                    toast.success("Admin Login Successful");
-                    navigate('/admin-dashboard');
-                } else {
-                    toast.error(backendData.message || "Backend authentication failed");
-                }
-            } else {
-                toast.error("Invalid Email or Password");
+            const res = await fetch(`${backendUrl}/api/admin/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            if (!res.ok) {
+                throw new Error(`Server error: ${res.status}`);
             }
+
+            const backendData = await res.json();
+
+            if (!backendData.success) {
+                toast.error(backendData.message || "Invalid Email or Password");
+                return;
+            }
+
+            localStorage.setItem('aToken', backendData.token);
+
+            // Store as adminToken to match AdminRoute in App.jsx
+            sessionStorage.setItem('adminToken', backendData.token);
+
+            toast.success("Admin Login Successful");
+            navigate('/admin-dashboard');
+
         } catch (err) {
-            toast.error("Something went wrong");
-            console.error(err);
+            console.error("Admin login error:", err);
+            toast.error(err.message || "Something went wrong. Please try again.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -70,6 +72,7 @@ const AdminLogin = () => {
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 focus:bg-white focus:border-blue-600 outline-none mb-3 text-sm"
                             required
+                            disabled={loading}
                         />
 
                         <div className="relative w-full mb-4">
@@ -80,11 +83,13 @@ const AdminLogin = () => {
                                 onChange={(e) => setPassword(e.target.value)}
                                 className="w-full px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 focus:bg-white focus:border-blue-600 outline-none text-sm pr-12"
                                 required
+                                disabled={loading}
                             />
                             <button
                                 onClick={() => setShowPassword(!showPassword)}
                                 type="button"
                                 className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600"
+                                tabIndex={-1}
                             >
                                 {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
                             </button>
@@ -92,9 +97,10 @@ const AdminLogin = () => {
 
                         <button
                             type="submit"
-                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm mb-4"
+                            disabled={loading}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm mb-4 transition"
                         >
-                            Login
+                            {loading ? "Logging in..." : "Login"}
                         </button>
                     </form>
 

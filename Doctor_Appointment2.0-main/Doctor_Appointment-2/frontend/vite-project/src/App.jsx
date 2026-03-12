@@ -54,7 +54,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 const App = () => {
   return (
-    <AuthProvider>
+    <>
       <ToastContainer />
       <Routes>
         <Route path='/' element={<Home />} />
@@ -81,7 +81,7 @@ const App = () => {
         <Route path='/doctor-login' element={<DoctorLogin />} />
         <Route path='/admin-login' element={<AdminLogin />} />
       </Routes>
-    </AuthProvider>
+    </>
   )
 }
 

@@ -1,5 +1,3 @@
-import appointmentModel from "../models/Appointment.js";
-import doctorModel from "../models/Doctor.js";
 import supabase from "../config/supabase.js";
 
 // API to book appointment
@@ -36,20 +34,7 @@ const bookAppointment = async (req, res) => {
             slots_booked[slotDate] = [slotTime];
         }
 
-        const appointmentData = {
-            userId,
-            docId,
-            userData,
-            docData,
-            amount,
-            slotTime,
-            slotDate,
-            date: Date.now(),
-            status: 'Pending'
-        };
-
-        const newAppointment = new appointmentModel(appointmentData);
-        await newAppointment.save();
+        const appointmentDate = Date.now();
 
         // 2. Save into Supabase 'appointments' table
         const { error: bookingError } = await supabase
@@ -62,7 +47,7 @@ const bookAppointment = async (req, res) => {
                 user_data: userData,
                 doc_data: docData,
                 amount: amount,
-                date: appointmentData.date,
+                date: appointmentDate,
                 status: 'Pending',
                 patient_name: userData.name
             }]);
@@ -91,9 +76,14 @@ const bookAppointment = async (req, res) => {
 // API to get doctor appointments for Doctor Dashboard
 const getDoctorAppointments = async (req, res) => {
     try {
-        // Ideally we verify the doctor's token here
-        const { docId } = req.body; // Or from req.user if using auth middleware
-        const appointments = await appointmentModel.find({ docId });
+        const { docId } = req.body; 
+        const { data: appointments, error } = await supabase
+            .from('appointments')
+            .select('*')
+            .eq('doc_id', docId);
+
+        if (error) throw error;
+        
         res.json({ success: true, appointments });
     } catch (error) {
         console.log(error);
@@ -105,7 +95,13 @@ const getDoctorAppointments = async (req, res) => {
 const updateStatus = async (req, res) => {
     try {
         const { appointmentId, status } = req.body;
-        await appointmentModel.findByIdAndUpdate(appointmentId, { status });
+        const { error } = await supabase
+            .from('appointments')
+            .update({ status })
+            .eq('id', appointmentId);
+
+        if (error) throw error;
+        
         res.json({ success: true, message: "Appointment status updated" });
     } catch (error) {
         console.log(error);
