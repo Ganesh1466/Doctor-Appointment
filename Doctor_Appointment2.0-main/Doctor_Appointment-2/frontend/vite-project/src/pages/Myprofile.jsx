@@ -245,6 +245,35 @@ const Myprofile = () => {
           )}
         </div>
 
+        {/* ADDRESS */}
+        <div className="flex flex-col sm:flex-row mb-4 sm:mb-2">
+          <p className="w-32 font-medium text-gray-600 mb-1 sm:mb-0">Address:</p>
+
+          {isEdit ? (
+            <div className="w-full sm:w-80 space-y-2">
+              <input
+                type="text"
+                value={userData.address.line1}
+                onChange={(e) => setUserData(prev => ({ ...prev, address: { ...prev.address, line1: e.target.value } }))}
+                className="border p-2 rounded w-full text-sm"
+                placeholder="Address Line 1"
+              />
+              <input
+                type="text"
+                value={userData.address.line2}
+                onChange={(e) => setUserData(prev => ({ ...prev, address: { ...prev.address, line2: e.target.value } }))}
+                className="border p-2 rounded w-full text-sm"
+                placeholder="Address Line 2"
+              />
+            </div>
+          ) : (
+            <p className="text-gray-500">
+              {userData.address.line1} <br />
+              {userData.address.line2}
+            </p>
+          )}
+        </div>
+
         {/* BASIC INFORMATION */}
         <hr className="my-4 border-gray-200" />
         <p className="text-base sm:text-lg font-semibold mb-3 text-gray-700">BASIC INFORMATION</p>
