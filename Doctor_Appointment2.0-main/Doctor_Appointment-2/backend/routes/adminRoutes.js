@@ -8,7 +8,7 @@ import {
   getBookingStats,
   getDashboardData,
   getRegistrationStats
-} from "../controllers/admincontroller.js";
+} from "../controllers/adminController.js";
 import upload from "../middlewares/multer.js";
 import authAdmin from "../middlewares/authAdmin.js";
 
