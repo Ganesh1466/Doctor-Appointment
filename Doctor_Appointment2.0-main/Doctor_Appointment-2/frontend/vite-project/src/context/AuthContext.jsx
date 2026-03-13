@@ -12,6 +12,15 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         let mounted = true;
 
+        const clearStaleTokens = () => {
+            // Remove all supabase-related keys from localStorage
+            Object.keys(localStorage).forEach((key) => {
+                if (key.startsWith("sb-")) {
+                    localStorage.removeItem(key);
+                }
+            });
+        };
+
         const initAuth = async () => {
             try {
                 // Get session once
@@ -23,15 +32,21 @@ export const AuthProvider = ({ children }) => {
                     console.error("Auth Session Error:", error.message);
                     if (
                         error.message.includes("Refresh Token Not Found") ||
-                        error.message.includes("invalid refresh token")
+                        error.message.includes("invalid refresh token") ||
+                        error.message.includes("Invalid Refresh Token")
                     ) {
+                        // Clear stale tokens so Supabase stops retrying with bad token
+                        clearStaleTokens();
                         await supabase.auth.signOut();
                     }
+                    setUser(null);
+                    return;
                 }
 
                 setUser(session?.user ?? null);
             } catch (err) {
                 console.error("Unexpected auth error during init:", err);
+                setUser(null);
             } finally {
                 if (mounted) setLoading(false);
             }
@@ -41,11 +56,16 @@ export const AuthProvider = ({ children }) => {
 
         // Listen for changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            (_event, session) => {
-                if (mounted) {
+            (event, session) => {
+                if (!mounted) return;
+
+                if (event === "SIGNED_OUT" || event === "TOKEN_REFRESHED" && !session) {
+                    clearStaleTokens();
+                    setUser(null);
+                } else {
                     setUser(session?.user ?? null);
-                    setLoading(false);
                 }
+                setLoading(false);
             }
         );
 
