@@ -19,6 +19,11 @@ const AdminLogin = () => {
         try {
             setLoading(true);
 
+            // Clear any stale Supabase tokens that cause refresh token errors
+            Object.keys(localStorage).forEach((key) => {
+                if (key.startsWith('sb-')) localStorage.removeItem(key);
+            });
+
             const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
             const res = await fetch(`${backendUrl}/api/admin/login`, {
@@ -38,10 +43,10 @@ const AdminLogin = () => {
                 return;
             }
 
-            localStorage.setItem('aToken', backendData.token);
-
-            // Store as adminToken to match AdminRoute in App.jsx
+            // Store ONLY in sessionStorage (AdminRoute checks sessionStorage.adminToken)
+            // authAdmin middleware reads 'atoken' header — fetch calls must send it
             sessionStorage.setItem('adminToken', backendData.token);
+            sessionStorage.setItem('aToken', backendData.token);
 
             toast.success("Admin Login Successful");
             navigate('/admin-dashboard');

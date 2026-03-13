@@ -69,39 +69,62 @@ const addDoctor = async (req, res) => {
     }
 };
 
-// API for admin login
 const loginAdmin = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // 1. Check if it's a valid admin in Supabase
+        if (!email || !password) {
+            return res.status(400).json({ success: false, message: "Email and password are required" });
+        }
+
+        // Fetch admin by email from Supabase
         const { data, error } = await supabase
             .from('admins')
-            .select('*')
+            .select('email, password')
             .eq('email', email)
-            .eq('password', password);
+            .maybeSingle();
 
         if (error) {
-            return res.json({ success: false, message: error.message });
+            console.error("Supabase admin query error:", error.message);
+            return res.status(500).json({ success: false, message: "Server error, please try again." });
         }
 
-        if (data && data.length > 0) {
-            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET);
-            return res.json({ success: true, token });
+        // No admin found with that email
+        if (!data) {
+            return res.status(401).json({ success: false, message: "Invalid Credentials" });
         }
 
-        // 2. Fallback to local .env configuration
-        if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-            const token = jwt.sign({ email, role: 'admin' }, process.env.JWT_SECRET);
-            res.json({ success: true, token });
-        } else {
-            res.json({ success: false, message: "Invalid Credentials" });
+        // Compare password
+        const passwordMatches = await bcrypt.compare(password, data.password);
+
+        if (!passwordMatches) {
+            return res.status(401).json({ success: false, message: "Invalid Credentials" });
         }
+
+        // Sign token
+        const token = jwt.sign(
+            { email: data.email, role: 'admin' },
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
+
+        return res.status(200).json({ success: true, token });
 
     } catch (error) {
-        console.log(error);
-        res.json({ success: false, message: error.message });
+        console.error("Login Admin Error:", error);
+        return res.status(500).json({ success: false, message: "Internal server error" });
     }
+};
+
+const hashExistingPasswords = async () => {
+    const { data: admins } = await supabase.from('admins').select('id, password');
+
+    for (const admin of admins) {
+        const hashed = await bcrypt.hash(admin.password, 10);
+        await supabase.from('admins').update({ password: hashed }).eq('id', admin.id);
+    }
+
+    console.log("All passwords hashed!");
 };
 
 // API to get all doctors list for admin panel

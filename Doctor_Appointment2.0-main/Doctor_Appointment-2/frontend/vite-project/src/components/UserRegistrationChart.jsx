@@ -20,7 +20,7 @@ const UserRegistrationChart = () => {
 
   const fetchStats = async () => {
     try {
-      const token = localStorage.getItem('aToken');
+      const token = sessionStorage.getItem('aToken');
       if (!token) {
         setError('No admin token found');
         setLoading(false);

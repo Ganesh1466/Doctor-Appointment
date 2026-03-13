@@ -11,8 +11,13 @@ const AdminSidebar = () => {
 
 
     const handleLogout = async () => {
+        // Clear all admin session tokens
         sessionStorage.removeItem('adminToken');
-        sessionStorage.removeItem('atoken');
+        sessionStorage.removeItem('aToken');
+        // Also clear any stale Supabase tokens to prevent refresh token errors
+        Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith('sb-')) localStorage.removeItem(key);
+        });
         navigate('/admin-login');
         toast.success("Logged out successfully");
     };

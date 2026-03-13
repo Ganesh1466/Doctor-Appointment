@@ -20,7 +20,7 @@ const AdminDashboard = () => {
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
-                const token = localStorage.getItem('aToken'); // Assuming admin token is stored here
+                const token = sessionStorage.getItem('aToken');
                 if (!token) return;
 
                 const baseUrl = import.meta.env.VITE_BACKEND_URL || '';
